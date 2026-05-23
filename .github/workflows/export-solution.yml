@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          persist-credentials: true
 
       - name: Install Power Platform CLI tools
         uses: microsoft/powerplatform-actions/actions-install@v1
@@ -447,6 +450,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          persist-credentials: true
 
       - name: Download unpacked solution artifact
         uses: actions/download-artifact@v4
