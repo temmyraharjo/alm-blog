@@ -87,7 +87,6 @@ jobs:
           else
             git diff --no-index -- /dev/null "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
           fi
-          git status --porcelain --untracked-files=all -- "src/solutions/${{ inputs.solution_name }}" > review/changes.status || true
           cp "src/solutions/Rule.md" review/rules.md
           {
             echo "Review the unpacked Power Platform solution changes."
@@ -95,21 +94,10 @@ jobs:
             echo "Target solution: ${{ inputs.solution_name }}"
             echo
             echo "You must read and apply the rules from rules.md."
-            echo "Only evaluate custom tables and custom attributes in scope as defined in the rules."
-            echo "Start with a human-readable summary in this exact style:"
-            echo "- Added table <table logical name> - <table display name>"
-            echo "  | Attribute | Display Name | Description |"
-            echo "  | <attribute logical name> | <attribute display name> | <short data type/definition description> |"
-            echo "Use Added/Updated/Deleted table wording based on actual diff evidence."
-            echo "If a table has no attribute changes in scope, still include the table line and write 'No in-scope attribute changes'."
-            echo "Start with a detailed CHANGE INVENTORY section (not generic summary)."
-            echo "For each in-scope custom table, show: table logical name, action (Created/Modified/Deleted), and evidence from the diff."
-            echo "Under each table, list all in-scope custom attributes touched by the diff and show: attribute logical name, action (Created/Modified/Deleted), type (Lookup/Other), and lookup target if lookup."
-            echo "After the inventory, add a RULE EVALUATION section that maps each listed component to the full rule names from rules.md (no RULE-xxx IDs) with PASS/ERROR/WARNING as applicable."
-            echo "Then list findings using the exact output structure defined in rules.md."
-            echo "If a rule does not apply to a component, explicitly mark it as N/A."
-            echo "If there are no findings, say so explicitly."
-            echo "If there are no in-scope custom tables/attributes in the diff, state that explicitly in CHANGE INVENTORY."
+            echo "Generate the output strictly using the section structure and scope rules defined in rules.md."
+            echo "For change summary, include all component types defined in rules.md."
+            echo "For naming-rule evaluation, only evaluate components that rules.md marks as in scope."
+            echo "If no components/rule findings are in scope, state that explicitly using the required sections in rules.md."
           } > review/instructions.txt
 
       - name: Set up Python
@@ -128,7 +116,6 @@ jobs:
           import json
           import os
           import re
-          import xml.etree.ElementTree as ET
           from pathlib import Path
           from urllib import request
 
@@ -158,7 +145,6 @@ jobs:
           instructions = Path('review/instructions.txt').read_text(encoding='utf-8')
           rules = Path('review/rules.md').read_text(encoding='utf-8')
           diff = Path('review/changes.diff').read_text(encoding='utf-8')
-          status = Path('review/changes.status').read_text(encoding='utf-8') if Path('review/changes.status').exists() else ''
 
           # Build a conservative allow-list of logical-name-like tokens seen in the diff.
           # The model must not invent names outside this list.
@@ -229,139 +215,6 @@ jobs:
               user_text,
             )
 
-          def local_name(tag: str) -> str:
-            return tag.split('}', 1)[-1].lower() if tag else ''
-
-          def first_text(node: ET.Element, names: set[str]) -> str:
-            for item in node.iter():
-              if local_name(item.tag) in names:
-                value = (item.text or '').strip()
-                if value:
-                  return value
-            return ''
-
-          def pretty_name(logical_name: str) -> str:
-            short = logical_name.split('_', 1)[1] if '_' in logical_name else logical_name
-            return short.replace('_', ' ').strip().title()
-
-          def parse_status_paths(status_text: str) -> dict[str, list[str]]:
-            buckets = {'added': [], 'modified': [], 'deleted': []}
-            for line in status_text.splitlines():
-              if not line.strip() or len(line) < 4:
-                continue
-              code = line[:2]
-              path = line[3:].strip()
-              if not path:
-                continue
-              if code == '??' or code.startswith('A'):
-                buckets['added'].append(path)
-              elif 'D' in code:
-                buckets['deleted'].append(path)
-              else:
-                buckets['modified'].append(path)
-            return buckets
-
-          def parse_entity_xml(entity_xml_path: Path, table_logical: str) -> tuple[str, list[tuple[str, str, str]]]:
-            table_display = pretty_name(table_logical)
-            attributes: list[tuple[str, str, str]] = []
-
-            try:
-              root = ET.fromstring(entity_xml_path.read_text(encoding='utf-8', errors='ignore'))
-            except Exception:
-              return table_display, attributes
-
-            display_from_xml = first_text(root, {'displayname'})
-            if display_from_xml:
-              table_display = display_from_xml
-
-            prefix = table_logical.split('_', 1)[0] + '_' if '_' in table_logical else ''
-            seen: set[str] = set()
-
-            for node in root.iter():
-              if local_name(node.tag) != 'attribute':
-                continue
-              logical = first_text(node, {'logicalname', 'name'})
-              if not logical or logical in seen:
-                continue
-              seen.add(logical)
-
-              # Only report custom attributes for this publisher prefix.
-              if prefix and not logical.startswith(prefix):
-                continue
-
-              attr_display = first_text(node, {'displayname'}) or logical
-              attr_type = first_text(node, {'attributetype', 'type'}) or 'Unknown'
-              attributes.append((logical, attr_display, attr_type))
-
-            attributes.sort(key=lambda item: item[0])
-            return table_display, attributes
-
-          def generate_human_change_summary_from_xml(status_text: str) -> str:
-            paths = parse_status_paths(status_text)
-            entity_file_pattern = re.compile(r'^src/solutions/[^/]+/Entities/([^/]+)/Entity\.xml$')
-
-            added_tables: list[str] = []
-            modified_tables: list[str] = []
-
-            for p in paths['added']:
-              if entity_file_pattern.match(p):
-                added_tables.append(p)
-
-            for p in paths['modified']:
-              if entity_file_pattern.match(p):
-                modified_tables.append(p)
-
-            lines: list[str] = []
-            lines.append('## XML-Based Change Summary')
-            lines.append('')
-
-            if not added_tables and not modified_tables:
-              lines.append('No custom table Entity.xml additions/modifications were detected in this run.')
-              return '\n'.join(lines)
-
-            def append_table_section(title: str, table_paths: list[str]) -> None:
-              lines.append(f'### {title}')
-              lines.append('')
-              if not table_paths:
-                lines.append('- None')
-                lines.append('')
-                return
-
-              for path_str in sorted(table_paths):
-                match = entity_file_pattern.match(path_str)
-                if not match:
-                  continue
-                table_logical = match.group(1)
-                table_display, attrs = parse_entity_xml(Path(path_str), table_logical)
-
-                if '_' not in table_logical:
-                  continue
-
-                lines.append(f'- {title[:-1]} table {table_display} ({table_logical})')
-                if attrs:
-                  lines.append('')
-                  lines.append('| Attribute | Display Name | Data Type |')
-                  lines.append('|---|---|---|')
-                  for logical, display, dtype in attrs:
-                    safe_display = display.replace('|', '\\|')
-                    safe_dtype = dtype.replace('|', '\\|')
-                    lines.append(f'| {logical} | {safe_display} | {safe_dtype} |')
-                else:
-                  lines.append('  - No custom attributes detected from Entity.xml.')
-                lines.append('')
-
-            append_table_section('Added Tables', added_tables)
-            append_table_section('Modified Tables', modified_tables)
-
-            if paths['deleted']:
-              lines.append('### Deleted Files')
-              lines.append('')
-              for p in sorted(paths['deleted']):
-                lines.append(f'- {p}')
-              lines.append('')
-
-            return '\n'.join(lines).strip()
-
           base_user_text = (
             instructions
             + '\n\n--- RULES ---\n' + rules
@@ -409,16 +262,6 @@ jobs:
 
           if not summary:
             summary = 'No LLM summary was returned.'
-
-          try:
-            change_summary = generate_human_change_summary_from_xml(status)
-          except Exception as exc:
-            change_summary = f'XML-based change summary failed: {exc}'
-
-          if not change_summary.strip():
-            change_summary = 'No LLM change summary was returned.'
-
-          Path('review/change-summary.md').write_text(change_summary.strip() + '\n', encoding='utf-8')
           Path('review/summary.md').write_text(summary + '\n', encoding='utf-8')
           PY
 
@@ -426,11 +269,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## LLM Change Summary (From Diff)"
-            echo
-            cat review/change-summary.md
-            echo
-            echo "## LLM Rule Review Summary"
+            echo "## LLM Review Summary"
             echo
             cat review/summary.md
           } >> "$GITHUB_STEP_SUMMARY"

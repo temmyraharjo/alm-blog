@@ -1,25 +1,65 @@
-# Power Platform Naming Convention Rules
+# Power Platform Review Rules
 
 ## Overview
 
-This document defines naming conventions for **custom tables and attributes** in Microsoft Power Platform (Dataverse). These rules are enforced by LLM-based review and apply **only to custom components** — i.e., those with a publisher prefix (e.g., `tmy_`). Out-of-the-box system tables and attributes (e.g., `account`, `contact`, `createdon`) are exempt.
+This document defines the review logic for unpacked Power Platform solution changes.
+
+- **Change summary scope:** All supported solution component types (tables, attributes, app modules, flows/processes, relationships, web resources, etc.).
+- **Naming rule scope:** Custom tables and custom attributes only (publisher-prefixed components such as `tmy_`).
+- **System component naming:** System tables/attributes are excluded from naming-rule violations.
 
 ---
 
 ## Scope
 
-| Component Type     | In Scope | Notes                                      |
-|--------------------|----------|--------------------------------------------|
-| Custom tables      | ✅       | Must carry a publisher prefix (e.g., `tmy_`) |
-| Custom attributes  | ✅       | Must carry a publisher prefix (e.g., `tmy_`) |
-| System tables      | ❌       | Exempt — do not apply these rules           |
-| System attributes  | ❌       | Exempt — do not apply these rules           |
-| Choice (option set)| ❌       | Not yet in scope                            |
-| Relationships      | ❌       | Not yet in scope                            |
+| Scope Area | Component Type | In Scope | Notes |
+|---|---|---|---|
+| Change Summary | Tables (Entities) | ✅ | Include added/modified/deleted table components |
+| Change Summary | Attributes (Columns) | ✅ | Include attribute changes when detectable from Entity.xml and related metadata |
+| Change Summary | App Modules / Model-driven apps | ✅ | Include app module changes |
+| Change Summary | App Module Site Maps | ✅ | Include sitemap changes |
+| Change Summary | Power Automate Flows / Processes (Workflows) | ✅ | Include flow/process changes when present in unpacked solution |
+| Change Summary | Relationships | ✅ | Include relationship changes |
+| Change Summary | Web Resources | ✅ | Include web resource changes |
+| Change Summary | Other solution components | ✅ | Include with best-effort type classification |
+| Naming Rules | Custom tables | ✅ | Must carry publisher prefix (for example `tmy_`) |
+| Naming Rules | Custom attributes | ✅ | Must carry publisher prefix (for example `tmy_`) |
+| Naming Rules | System tables | ❌ | Exempt from naming-rule checks |
+| Naming Rules | System attributes | ❌ | Exempt from naming-rule checks |
 
 ---
 
-## Rules
+## Component Change Classification Rules
+
+Use these rules to determine **component type** and **change action** in the human summary.
+
+### Change action mapping
+
+- `Added`: file path appears as untracked/added in change evidence.
+- `Modified`: file path appears as modified in change evidence.
+- `Deleted`: file path appears as deleted in change evidence.
+
+### Component type mapping by unpacked path (best effort)
+
+- `src/solutions/<solution>/Entities/<name>/Entity.xml` -> Table
+- `src/solutions/<solution>/Entities/<name>/...` -> Table-related metadata (forms/views/ribbon)
+- `src/solutions/<solution>/AppModules/<name>/AppModule.xml` -> App Module
+- `src/solutions/<solution>/AppModuleSiteMaps/<name>/AppModuleSiteMap.xml` -> App Module Sitemap
+- `src/solutions/<solution>/Other/Relationships*.xml` and `.../Other/Relationships/*.xml` -> Relationship
+- `src/solutions/<solution>/Workflows/*.xml` or workflow/process paths -> Power Automate Flow / Process
+- `src/solutions/<solution>/WebResources/**` -> Web Resource
+- everything else -> Other Component
+
+### Table and attribute extraction rules
+
+- Table logical name: use folder name under `Entities/<table>`.
+- Table display name: use DisplayName from `Entity.xml` when available, otherwise derive from logical name.
+- Attribute rows: extract custom attributes from `Entity.xml` for the same publisher prefix as the table.
+- Attribute data type: use attribute type metadata from XML; if unavailable, report `Unknown`.
+
+---
+
+## Naming Rules
 
 ---
 
@@ -117,23 +157,27 @@ When reviewing an attribute that is of type **Lookup**, check that its logical n
 
 ## LLM Review Output Format
 
-Before listing rule findings, include a mandatory detailed inventory section so reviewers can see exactly what changed.
+Before listing naming-rule findings, include a mandatory detailed inventory section so reviewers can see exactly what changed.
 
-### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY
+### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY (ALL COMPONENTS)
 
 Start the output with a concise human-readable summary in this style:
 
 ```
 - Added table <table logical name> - <table display name>
-	| Attribute | Display Name | Description |
-	| <attribute logical name> | <attribute display name> | <short data type/definition description> |
+  | Attribute | Display Name | Data Type |
+  | <attribute logical name> | <attribute display name> | <attribute data type> |
+
+- Added app module <component logical name>
+- Modified flow/process <component logical name>
+- Deleted relationship <component logical name>
 ```
 
 Use `Added`, `Updated`, or `Deleted` based on diff evidence.
 If a changed table has no in-scope attribute changes, include the table line and write: `No in-scope attribute changes`.
-If no in-scope custom tables/attributes are found, write: `No in-scope custom table/attribute changes found.`
+If no component changes are found, write: `No component changes found.`
 
-### Mandatory Section 1: CHANGE INVENTORY
+### Mandatory Section 1: CHANGE INVENTORY (ALL COMPONENTS)
 
 Use this format:
 
@@ -147,18 +191,23 @@ EVIDENCE: <short diff-based evidence>
 ATTRIBUTES:
 - <attribute logical name> | ACTION: <Created | Modified | Deleted> | TYPE: <Lookup | Other> | LOOKUP TARGET: <target table or N/A>
 - <attribute logical name> | ACTION: <Created | Modified | Deleted> | TYPE: <Lookup | Other> | LOOKUP TARGET: <target table or N/A>
+
+COMPONENT: <component logical or path-derived name>
+COMPONENT TYPE: <App Module | App Module Sitemap | Flow/Process | Relationship | Web Resource | Other Component>
+COMPONENT ACTION: <Created | Modified | Deleted>
+EVIDENCE: <short diff-based evidence>
 ```
 
-If no in-scope custom tables or custom attributes are found, output:
+If no component changes are found, output:
 
 ```
 ## CHANGE INVENTORY
-No in-scope custom tables or custom attributes were found in the diff.
+No component changes were found in the diff.
 ```
 
-### Mandatory Section 2: RULE EVALUATION MATRIX
+### Mandatory Section 2: NAMING RULE EVALUATION MATRIX (CUSTOM TABLES/ATTRIBUTES ONLY)
 
-For every component listed in CHANGE INVENTORY (table and attribute), include rule evaluation:
+For every custom table/custom attribute listed in CHANGE INVENTORY, include naming-rule evaluation:
 
 ```
 ## RULE EVALUATION MATRIX
@@ -173,7 +222,9 @@ SUGGESTED FIX: <logical name or N/A>
 
 Use `N/A` when a rule does not apply (for example, singular-form rule on attributes, lookup-suffix rule on non-lookup attributes and tables).
 
-### Mandatory Section 3: FINDINGS
+Do not apply naming-rule checks to non-table/non-attribute components (apps, flows, relationships, web resources, and other components).
+
+### Mandatory Section 3: FINDINGS (NAMING RULES)
 
 When reviewing a set of changes, output findings in the following structure:
 
@@ -224,4 +275,4 @@ The following are **not yet enforced** but are candidates for future rules:
 
 ---
 
-*Last updated: 2026-05-23 | Scope: Custom tables and attributes only*
+*Last updated: 2026-05-24 | Change summary scope: all component types | Naming-rule scope: custom tables and custom attributes only*
