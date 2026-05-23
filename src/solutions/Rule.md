@@ -37,8 +37,7 @@ Use this exact order for every review:
 2. Build the changed-component list using path mapping rules in this document.
 3. Classify each component action as `Added`, `Modified`, or `Deleted` from evidence.
 4. Produce human-readable summary lines (Section 0), applying compact mode when thresholds are met.
-5. Produce CHANGE INVENTORY (Section 1) for all changed components.
-6. Evaluate naming rules only for in-scope custom tables and custom attributes (Section 2 and Section 3).
+5. Evaluate naming rules only for in-scope custom tables and custom attributes (Section 1 and Section 2).
 7. If no in-scope items exist for a section, explicitly output the required empty-state sentence.
 
 Do not skip steps. Do not reorder steps.
@@ -53,8 +52,8 @@ When evidence sources disagree, use this precedence:
 
 ### Hard Constraints (No Ambiguity)
 
-- Never invent component names, logical names, flow names, or attributes.
-- Never auto-correct or normalize logical names. Keep exact names from evidence.
+- Never invent component names, physical names, flow names, or attributes.
+- Never auto-correct or normalize physical names. Keep exact names from evidence.
 - If evidence is insufficient, explicitly write `not available from current evidence`.
 - Use only component names that appear in provided evidence inputs.
 - Do not apply naming-rule checks outside custom tables/custom attributes.
@@ -84,8 +83,8 @@ Use these rules to determine **component type** and **change action** in the hum
 
 ### Table and attribute extraction rules
 
-- Table logical name: use folder name under `Entities/<table>`.
-- Table display name: use DisplayName from `Entity.xml` when available, otherwise derive from logical name.
+- Table physical name: use folder name under `Entities/<table>`.
+- Table display name: use DisplayName from `Entity.xml` when available, otherwise derive from physical name.
 - Attribute rows: extract custom attributes from `Entity.xml` for the same publisher prefix as the table.
 - Attribute data type: use attribute type metadata from XML; if unavailable, report `Unknown`.
 
@@ -95,19 +94,19 @@ Use these rules to determine **component type** and **change action** in the hum
 
 ---
 
-### Logical names must be in lowercase
+### PhysicalName must be in lowercase
 
-**Applies to:** Table logical names, attribute logical names
+**Applies to:** Table physical names, attribute physical names
 
 **Definition:**  
-The full logical name — including the publisher prefix and the entity/attribute portion — must contain **no uppercase letters**. Every character must be either a lowercase letter (`a–z`), a digit (`0–9`), or an underscore (`_`).
+The full physical name — including the publisher prefix and the entity/attribute portion — must contain **no uppercase letters**. Every character must be either a lowercase letter (`a–z`), a digit (`0–9`), or an underscore (`_`).
 
 **Rationale:**  
-Dataverse stores logical names in lowercase. Inconsistent casing in schema names before saving causes confusion during solution comparisons, ALM pipelines, and code references.
+Dataverse stores physical names in lowercase. Inconsistent casing in schema names before saving causes confusion during solution comparisons, ALM pipelines, and code references.
 
 **Examples:**
 
-| Logical Name       | Status | Reason                              |
+| PhysicalName      | Status | Reason                              |
 |--------------------|--------|-------------------------------------|
 | `tmy_order`        | ✅ PASS | All lowercase                       |
 | `tmy_orderdetail`  | ✅ PASS | All lowercase                       |
@@ -116,23 +115,23 @@ Dataverse stores logical names in lowercase. Inconsistent casing in schema names
 | `TMY_order`        | ❌ FAIL | Prefix contains uppercase letters   |
 
 **LLM Check Instruction:**  
-Scan the logical name character by character. If any character falls outside `[a-z0-9_]`, flag a violation of **Logical names must be in lowercase**.
+Scan the physical name character by character. If any character falls outside `[a-z0-9_]`, flag a violation of **PhysicalName must be in lowercase**.
 
 ---
 
-### Table logical names must use singular form
+### Table physical names must use singular form
 
-**Applies to:** Table logical names only (not attributes)
+**Applies to:** Table physical names only (not attributes)
 
 **Definition:**  
-The entity portion of a custom table's logical name must represent a **single record concept**, not a collection. Use the singular form of the noun.
+The entity portion of a custom table's physical name must represent a **single record concept**, not a collection. Use the singular form of the noun.
 
 **Rationale:**  
 Each table record represents one instance of the entity. Plural naming implies a collection and conflicts with standard Dataverse conventions (e.g., `account`, `contact`, `invoice`).
 
 **Examples:**
 
-| Logical Name        | Status | Reason                                    |
+| PhysicalName       | Status | Reason                                    |
 |---------------------|--------|-------------------------------------------|
 | `tmy_order`         | ✅ PASS | Singular                                  |
 | `tmy_orderdetail`   | ✅ PASS | Singular                                  |
@@ -144,7 +143,7 @@ Each table record represents one instance of the entity. Plural naming implies a
 **Common plural suffixes to flag:** `-s`, `-es`, `-ies` (converted from `-y`), `-ves`
 
 **LLM Check Instruction:**  
-Extract the entity portion of the name (everything after the first `_`). Check whether it ends with a common plural suffix (`s`, `es`, `ies`, `ves`). If yes, flag as a probable violation of **Table logical names must use singular form** and suggest the singular form. Note: some words are legitimately non-plural despite ending in `s` (e.g., `status`, `address`, `process`) — use context and common English to distinguish.
+Extract the entity portion of the name (everything after the first `_`). Check whether it ends with a common plural suffix (`s`, `es`, `ies`, `ves`). If yes, flag as a probable violation of **Table physical names must use singular form** and suggest the singular form. Note: some words are legitimately non-plural despite ending in `s` (e.g., `status`, `address`, `process`) — use context and common English to distinguish.
 
 **Known non-violations (words ending in `s` that are singular):**
 
@@ -152,19 +151,19 @@ Extract the entity portion of the name (everything after the first `_`). Check w
 
 ---
 
-### Lookup attribute logical names must end with the suffix `id`
+### Lookup attribute physical names must end with the suffix `id`
 
 **Applies to:** Custom lookup (Many-to-One relationship) attributes only
 
 **Definition:**  
-Any attribute that stores a reference to another table (i.e., a lookup field) must have a logical name ending in `id`. The portion before `id` must meaningfully represent the target table or relationship purpose.
+Any attribute that stores a reference to another table (i.e., a lookup field) must have a physical name ending in `id`. The portion before `id` must meaningfully represent the target table or relationship purpose.
 
 **Rationale:**  
-Dataverse appends `id` to lookup logical names automatically when the schema name follows conventions. Enforcing this rule ensures schema names are set correctly before deployment and that lookup fields are immediately distinguishable from other field types during review.
+Dataverse appends `id` to lookup physical names automatically when the schema name follows conventions. Enforcing this rule ensures schema names are set correctly before deployment and that lookup fields are immediately distinguishable from other field types during review.
 
 **Examples:**
 
-| Logical Name          | Status | Reason                                                   |
+| PhysicalName         | Status | Reason                                                   |
 |-----------------------|--------|----------------------------------------------------------|
 | `tmy_orderid`         | ✅ PASS | Lookup to `tmy_order`, ends with `id`                   |
 | `tmy_contactid`       | ✅ PASS | Lookup to `contact`, ends with `id`                     |
@@ -174,7 +173,7 @@ Dataverse appends `id` to lookup logical names automatically when the schema nam
 | `tmy_ref_contact`     | ❌ FAIL | Lookup field not ending with `id`                       |
 
 **LLM Check Instruction:**  
-When reviewing an attribute that is of type **Lookup**, check that its logical name ends in `id`. If it does not, flag a violation of **Lookup attribute logical names must end with the suffix `id`**. This rule applies **only to lookup-type attributes** — do not apply to text, number, date, or other attribute types.
+When reviewing an attribute that is of type **Lookup**, check that its physical name ends in `id`. If it does not, flag a violation of **Lookup attribute physical names must end with the suffix `id`**. This rule applies **only to lookup-type attributes** — do not apply to text, number, date, or other attribute types.
 
 ---
 
@@ -189,8 +188,6 @@ When reviewing an attribute that is of type **Lookup**, check that its logical n
 
 ## LLM Review Output Format
 
-Before listing naming-rule findings, include a mandatory detailed inventory section so reviewers can see exactly what changed.
-
 ### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY (ALL COMPONENTS)
 
 Start Section 0 with a compact summary table (no sentence-style intro lines).
@@ -198,7 +195,7 @@ Start Section 0 with a compact summary table (no sentence-style intro lines).
 Use this exact header order:
 
 ```
-| Action | Display Name | Logical Name |
+| Action | Display Name | PhysicalName |
 |---|---|---|
 | Added | Order Detail | tmy_oderdetail |
 | Added | Order | tmy_order |
@@ -207,11 +204,11 @@ Use this exact header order:
 
 Rules for this table:
 
-- Prioritize display name first, then logical name.
+- Prioritize display name first, then physical name.
 - Use `Added`, `Modified`, or `Deleted` in `Action`.
 - Include all in-scope changed components (tables, apps, flows/processes, relationships, web resources, others) as separate rows.
-- If display name is unavailable, derive a readable display name from logical name/path.
-- If logical name is unavailable, use best-effort path-derived identifier.
+- If display name is unavailable, derive a readable display name from physical name/path.
+- If physical name is unavailable, use best-effort path-derived identifier.
 - If there are no component changes, output one row:
   - `| None | No component changes found | N/A |`
 
@@ -226,9 +223,9 @@ Use compact mode when either of these is true:
 
 In compact mode:
 
-- Summarize at table level (logical names) for added/updated/deleted tables.
+- Summarize at table level (physical names) for added/updated/deleted tables.
 - Do not expand to attribute-level details unless a specific naming-rule finding requires it.
-- If available from XML, include table display name in short form: `<logical name> (<display name>)`.
+- If available from XML, include table display name in short form: `<physical name> (<display name>)`.
 - Use short grouped lines such as:
   - `Added tables: tmy_order (Order), tmy_oderdetail (Order Detail), ...`
   - `Updated tables: ...`
@@ -237,8 +234,7 @@ In compact mode:
   - `Updated flows/processes: ...`
   - `Deleted flows/processes: ...`
 
-In compact mode, CHANGE INVENTORY may include only table-level rows plus non-table component rows.
-Attribute-level rows are optional unless needed to explain a naming-rule finding.
+In compact mode, attribute-level rows are optional unless needed to explain a naming-rule finding.
 
 For flows/processes, include best-effort high-level step result summaries when available from workflow metadata.
 Use concise lines like:
@@ -252,50 +248,20 @@ Do not invent step names. If step details are not available in evidence, write:
 After the compact summary table, continue with concise component-level lines in this style:
 
 ```
-- Added table <table logical name> - <table display name>
+- Added table <table physical name> - <table display name>
   | Attribute | Display Name | Data Type |
-  | <attribute logical name> | <attribute display name> | <attribute data type> |
+  | <attribute physical name> | <attribute display name> | <attribute data type> |
 
-- Added app module <component logical name>
-- Modified flow/process <component logical name>
-- Deleted relationship <component logical name>
+- Added app module <component physical name>
+- Modified flow/process <component physical name>
+- Deleted relationship <component physical name>
 ```
 
 Use `Added`, `Updated`, or `Deleted` based on diff evidence.
 If a changed table has no in-scope attribute changes, include the table line and write: `No in-scope attribute changes`.
 If no component changes are found, write: `No component changes found.`
 
-### Mandatory Section 1: CHANGE INVENTORY (ALL COMPONENTS)
-
-Use this format:
-
-```
-## CHANGE INVENTORY
-
-TABLE: <table logical name>
-TABLE ACTION: <Created | Modified | Deleted>
-EVIDENCE: <short diff-based evidence>
-
-ATTRIBUTES:
-- <attribute logical name> | ACTION: <Created | Modified | Deleted> | TYPE: <Lookup | Other> | LOOKUP TARGET: <target table or N/A>
-- <attribute logical name> | ACTION: <Created | Modified | Deleted> | TYPE: <Lookup | Other> | LOOKUP TARGET: <target table or N/A>
-
-COMPONENT: <component logical or path-derived name>
-COMPONENT TYPE: <App Module | App Module Sitemap | Flow/Process | Relationship | Web Resource | Other Component>
-COMPONENT ACTION: <Created | Modified | Deleted>
-EVIDENCE: <short diff-based evidence>
-```
-
-If no component changes are found, output:
-
-```
-## CHANGE INVENTORY
-No component changes were found in the diff.
-```
-
-In compact mode, it is valid to group inventory rows by component type, as long as action and evidence remain explicit.
-
-### Mandatory Section 2: NAMING RULE EVALUATION MATRIX (CUSTOM TABLES/ATTRIBUTES ONLY)
+### Mandatory Section 1: NAMING RULE EVALUATION MATRIX (CUSTOM TABLES/ATTRIBUTES ONLY)
 
 Include naming-rule evaluation only for components with potential or confirmed violations (WARNING/ERROR).
 Do not print PASS-only component entries.
@@ -311,20 +277,20 @@ For components with WARNING/ERROR, use:
 
 ```
 ## RULE EVALUATION MATRIX
-COMPONENT: <logical name>
+COMPONENT: <physical name>
 TYPE: <Table | Attribute — Lookup | Attribute — Other>
-Logical names must be in lowercase: <PASS | ERROR>
-Table logical names must use singular form: <PASS | ERROR | WARNING | N/A>
-Lookup attribute logical names must end with the suffix `id`: <PASS | ERROR | N/A>
+PhysicalName must be in lowercase: <PASS | ERROR>
+Table physical names must use singular form: <PASS | ERROR | WARNING | N/A>
+Lookup attribute physical names must end with the suffix `id`: <PASS | ERROR | N/A>
 REASON: <short explanation>
-SUGGESTED FIX: <logical name or N/A>
+SUGGESTED FIX: <physical name or N/A>
 ```
 
 Use `N/A` when a rule does not apply (for example, singular-form rule on attributes, lookup-suffix rule on non-lookup attributes and tables).
 
 Do not apply naming-rule checks to non-table/non-attribute components (apps, flows, relationships, web resources, and other components).
 
-### Mandatory Section 3: FINDINGS (NAMING RULES)
+### Mandatory Section 2: FINDINGS (NAMING RULES)
 
 List findings only for WARNING/ERROR violations.
 Do not print PASS findings.
@@ -339,9 +305,9 @@ No naming-rule violations found.
 When violations exist, output findings in the following structure:
 
 ```
-COMPONENT: <logical name>
+COMPONENT: <physical name>
 TYPE: <Table | Attribute — Lookup | Attribute — Other>
-RULE VIOLATED: <Logical names must be in lowercase | Table logical names must use singular form | Lookup attribute logical names must end with the suffix `id` | NONE>
+RULE VIOLATED: <PhysicalName must be in lowercase | Table physical names must use singular form | Lookup attribute physical names must end with the suffix `id` | NONE>
 SEVERITY: <ERROR | WARNING | PASS>
 REASON: <one-line explanation>
 SUGGESTED FIX: <corrected logical name, if applicable>
@@ -352,7 +318,7 @@ SUGGESTED FIX: <corrected logical name, if applicable>
 ```
 COMPONENT: tmy_Orders
 TYPE: Table
-RULE VIOLATED: Logical names must be in lowercase; Table logical names must use singular form
+RULE VIOLATED: PhysicalName must be in lowercase; Table physical names must use singular form
 SEVERITY: ERROR
 REASON: Contains uppercase letter 'O'; entity name is plural.
 SUGGESTED FIX: tmy_order
@@ -365,7 +331,7 @@ REASON: Lowercase, lookup field correctly ends with 'id'.
 
 COMPONENT: tmy_contact_ref
 TYPE: Attribute — Lookup
-RULE VIOLATED: Lookup attribute logical names must end with the suffix `id`
+RULE VIOLATED: Lookup attribute physical names must end with the suffix `id`
 SEVERITY: ERROR
 REASON: Lookup attribute does not end with 'id'.
 SUGGESTED FIX: tmy_contactid
