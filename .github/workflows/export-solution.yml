@@ -21,6 +21,8 @@ jobs:
   export:
     name: Export ${{ inputs.solution_name }}
     runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.detect_changes.outputs.has_changes }}
     environment:
       name: dev
 
@@ -218,8 +220,94 @@ jobs:
             cat review/summary.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit and push unmanaged zip + unpacked solution changes (approval required)
-        if: ${{ inputs.approved_for_push }}
+      - name: Detect solution changes
+        id: detect_changes
+        shell: bash
+        run: |
+          if git status --porcelain -- "src/solutions/${{ inputs.solution_name }}" | grep -q .; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Detected Solution Changes"
+              echo
+              echo "Changes were detected under src/solutions/${{ inputs.solution_name }}."
+              echo
+              echo '```'
+              git status --porcelain -- "src/solutions/${{ inputs.solution_name }}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Detected Solution Changes"
+              echo
+              echo "No changes were detected under src/solutions/${{ inputs.solution_name }}."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Push request status
+        shell: bash
+        run: |
+          if [ "${{ inputs.approved_for_push }}" = "true" ]; then
+            echo "Push requested. Approval gate will run in the next job." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Push not requested (approved_for_push=false). Export/review artifacts were generated only." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Push skipped (approval not requested)
+        if: ${{ !inputs.approved_for_push }}
+        shell: bash
+        run: |
+          echo "No commit/push was performed because approved_for_push=false." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push skipped (no changes detected)
+        if: ${{ inputs.approved_for_push && steps.detect_changes.outputs.has_changes != 'true' }}
+        shell: bash
+        run: |
+          echo "Push was requested, but there are no changes to commit under src/solutions/${{ inputs.solution_name }}." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exported zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev
+          path: out/*.zip
+          if-no-files-found: error
+
+      - name: Upload unpacked solution folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev-unpacked
+          path: src/solutions/${{ inputs.solution_name }}/**
+          if-no-files-found: error
+
+      - name: Upload review bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev-review
+          path: review/**
+          if-no-files-found: error
+
+  push_changes:
+    name: Approval and push changes
+    runs-on: ubuntu-latest
+    needs: export
+    if: ${{ inputs.approved_for_push && needs.export.outputs.has_changes == 'true' }}
+    environment:
+      name: solution-push
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download unpacked solution artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev-unpacked
+          path: .
+
+      - name: Commit and push unmanaged zip + unpacked solution changes
         shell: bash
         run: |
           if [ "${GITHUB_REF_TYPE}" != "branch" ]; then
@@ -245,30 +333,3 @@ jobs:
 
           git commit -m "chore(${{ inputs.solution_name }}): export unmanaged zip and unpacked solution (run ${{ github.run_number }})"
           git push origin "HEAD:${branch}"
-
-      - name: Push skipped (approval not granted)
-        if: ${{ !inputs.approved_for_push }}
-        shell: bash
-        run: |
-          echo "approved_for_push=false, so no commit/push was performed." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload exported zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.solution_name }}-dev
-          path: out/*.zip
-          if-no-files-found: error
-
-      - name: Upload unpacked solution folder
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.solution_name }}-dev-unpacked
-          path: src/solutions/${{ inputs.solution_name }}/**
-          if-no-files-found: error
-
-      - name: Upload review bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.solution_name }}-dev-review
-          path: review/**
-          if-no-files-found: error
