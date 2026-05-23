@@ -96,9 +96,10 @@ jobs:
             echo
             echo "You must read and apply the rules from rules.md."
             echo "Generate the output strictly using the section structure and scope rules defined in rules.md."
-            echo "The first lines must follow rules.md one-liner requirements for added tables and added flow/process components."
+            echo "Start Section 0 with the compact summary table format defined in rules.md (Action | Display Name | Logical Name)."
             echo "For change summary, include all component types defined in rules.md."
             echo "For naming-rule evaluation, only evaluate components that rules.md marks as in scope."
+            echo "For naming rules output, print only WARNING/ERROR violations; suppress PASS component entries as required by rules.md."
             echo "If no components/rule findings are in scope, state that explicitly using the required sections in rules.md."
           } > review/instructions.txt
 

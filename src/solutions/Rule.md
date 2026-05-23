@@ -193,29 +193,27 @@ Before listing naming-rule findings, include a mandatory detailed inventory sect
 
 ### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY (ALL COMPONENTS)
 
-The very first line must be a plain-English one-liner in this format when tables are added:
+Start Section 0 with a compact summary table (no sentence-style intro lines).
+
+Use this exact header order:
 
 ```
-I saw <N> table(s) added into the solution: "<table1>, <table2>, ...".
+| Action | Display Name | Logical Name |
+|---|---|---|
+| Added | Order Detail | tmy_oderdetail |
+| Added | Order | tmy_order |
+| Added | Blog App | tmy_blogapp |
 ```
 
-If no tables were added, use:
+Rules for this table:
 
-```
-I saw no tables added into the solution.
-```
-
-When Power Automate flows/processes are added, include an additional one-liner:
-
-```
-I saw <N> flow/process component(s) added into the solution: "<flow1>, <flow2>, ...".
-```
-
-If no flows/processes were added, use:
-
-```
-I saw no flow/process components added into the solution.
-```
+- Prioritize display name first, then logical name.
+- Use `Added`, `Modified`, or `Deleted` in `Action`.
+- Include all in-scope changed components (tables, apps, flows/processes, relationships, web resources, others) as separate rows.
+- If display name is unavailable, derive a readable display name from logical name/path.
+- If logical name is unavailable, use best-effort path-derived identifier.
+- If there are no component changes, output one row:
+  - `| None | No component changes found | N/A |`
 
 ### Large Change Set Summary Mode
 
@@ -228,7 +226,6 @@ Use compact mode when either of these is true:
 
 In compact mode:
 
-- Keep the first sentence mandatory.
 - Summarize at table level (logical names) for added/updated/deleted tables.
 - Do not expand to attribute-level details unless a specific naming-rule finding requires it.
 - If available from XML, include table display name in short form: `<logical name> (<display name>)`.
@@ -252,7 +249,7 @@ Do not invent step names. If step details are not available in evidence, write:
 
 - `Flow <name>: step-level details not available from current unpacked evidence.`
 
-Start the output with a concise human-readable summary in this style:
+After the compact summary table, continue with concise component-level lines in this style:
 
 ```
 - Added table <table logical name> - <table display name>
@@ -300,7 +297,17 @@ In compact mode, it is valid to group inventory rows by component type, as long 
 
 ### Mandatory Section 2: NAMING RULE EVALUATION MATRIX (CUSTOM TABLES/ATTRIBUTES ONLY)
 
-For every custom table/custom attribute listed in CHANGE INVENTORY, include naming-rule evaluation:
+Include naming-rule evaluation only for components with potential or confirmed violations (WARNING/ERROR).
+Do not print PASS-only component entries.
+
+If no naming-rule violations exist, output only:
+
+```
+## RULE EVALUATION MATRIX
+No naming-rule violations found.
+```
+
+For components with WARNING/ERROR, use:
 
 ```
 ## RULE EVALUATION MATRIX
@@ -319,7 +326,17 @@ Do not apply naming-rule checks to non-table/non-attribute components (apps, flo
 
 ### Mandatory Section 3: FINDINGS (NAMING RULES)
 
-When reviewing a set of changes, output findings in the following structure:
+List findings only for WARNING/ERROR violations.
+Do not print PASS findings.
+
+If no violations exist, output only:
+
+```
+## FINDINGS (NAMING RULES)
+No naming-rule violations found.
+```
+
+When violations exist, output findings in the following structure:
 
 ```
 COMPONENT: <logical name>
