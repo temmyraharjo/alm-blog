@@ -29,6 +29,38 @@ This document defines the review logic for unpacked Power Platform solution chan
 
 ---
 
+## Required Review Procedure (Follow In Order)
+
+Use this exact order for every review:
+
+1. Read all provided evidence inputs (`changes.status`, `changes.diff`, unpacked XML/component files, and this rule file).
+2. Build the changed-component list using path mapping rules in this document.
+3. Classify each component action as `Added`, `Modified`, or `Deleted` from evidence.
+4. Produce human-readable summary lines (Section 0), applying compact mode when thresholds are met.
+5. Produce CHANGE INVENTORY (Section 1) for all changed components.
+6. Evaluate naming rules only for in-scope custom tables and custom attributes (Section 2 and Section 3).
+7. If no in-scope items exist for a section, explicitly output the required empty-state sentence.
+
+Do not skip steps. Do not reorder steps.
+
+### Evidence Precedence
+
+When evidence sources disagree, use this precedence:
+
+1. `changes.status` for Added/Modified/Deleted file action detection.
+2. `changes.diff` for change evidence details.
+3. Unpacked XML/component files for display names, attribute details, flow trigger/actions, and descriptions.
+
+### Hard Constraints (No Ambiguity)
+
+- Never invent component names, logical names, flow names, or attributes.
+- Never auto-correct or normalize logical names. Keep exact names from evidence.
+- If evidence is insufficient, explicitly write `not available from current evidence`.
+- Use only component names that appear in provided evidence inputs.
+- Do not apply naming-rule checks outside custom tables/custom attributes.
+
+---
+
 ## Component Change Classification Rules
 
 Use these rules to determine **component type** and **change action** in the human summary.
@@ -161,6 +193,65 @@ Before listing naming-rule findings, include a mandatory detailed inventory sect
 
 ### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY (ALL COMPONENTS)
 
+The very first line must be a plain-English one-liner in this format when tables are added:
+
+```
+I saw <N> table(s) added into the solution: "<table1>, <table2>, ...".
+```
+
+If no tables were added, use:
+
+```
+I saw no tables added into the solution.
+```
+
+When Power Automate flows/processes are added, include an additional one-liner:
+
+```
+I saw <N> flow/process component(s) added into the solution: "<flow1>, <flow2>, ...".
+```
+
+If no flows/processes were added, use:
+
+```
+I saw no flow/process components added into the solution.
+```
+
+### Large Change Set Summary Mode
+
+When the number of changed components is large, prefer compact summary output.
+
+Use compact mode when either of these is true:
+
+- 10 or more changed components overall, or
+- 5 or more changed tables.
+
+In compact mode:
+
+- Keep the first sentence mandatory.
+- Summarize at table level (logical names) for added/updated/deleted tables.
+- Do not expand to attribute-level details unless a specific naming-rule finding requires it.
+- If available from XML, include table display name in short form: `<logical name> (<display name>)`.
+- Use short grouped lines such as:
+  - `Added tables: tmy_order (Order), tmy_oderdetail (Order Detail), ...`
+  - `Updated tables: ...`
+  - `Deleted tables: ...`
+  - `Added flows/processes: Flow A, Flow B, ...`
+  - `Updated flows/processes: ...`
+  - `Deleted flows/processes: ...`
+
+In compact mode, CHANGE INVENTORY may include only table-level rows plus non-table component rows.
+Attribute-level rows are optional unless needed to explain a naming-rule finding.
+
+For flows/processes, include best-effort high-level step result summaries when available from workflow metadata.
+Use concise lines like:
+
+- `Flow <name>: trigger <trigger>; then <action 1>; then <action 2>; result <outcome summary>.`
+
+Do not invent step names. If step details are not available in evidence, write:
+
+- `Flow <name>: step-level details not available from current unpacked evidence.`
+
 Start the output with a concise human-readable summary in this style:
 
 ```
@@ -204,6 +295,8 @@ If no component changes are found, output:
 ## CHANGE INVENTORY
 No component changes were found in the diff.
 ```
+
+In compact mode, it is valid to group inventory rows by component type, as long as action and evidence remain explicit.
 
 ### Mandatory Section 2: NAMING RULE EVALUATION MATRIX (CUSTOM TABLES/ATTRIBUTES ONLY)
 

@@ -96,6 +96,7 @@ jobs:
             echo
             echo "You must read and apply the rules from rules.md."
             echo "Generate the output strictly using the section structure and scope rules defined in rules.md."
+            echo "The first lines must follow rules.md one-liner requirements for added tables and added flow/process components."
             echo "For change summary, include all component types defined in rules.md."
             echo "For naming-rule evaluation, only evaluate components that rules.md marks as in scope."
             echo "If no components/rule findings are in scope, state that explicitly using the required sections in rules.md."
@@ -117,6 +118,7 @@ jobs:
           import json
           import os
           import re
+          import difflib
           from pathlib import Path
           from urllib import request
 
@@ -212,6 +214,7 @@ jobs:
                 'You are reviewing unpacked Microsoft Power Platform solution changes. '
                 'Follow the provided rules exactly and produce a detailed, evidence-based review. '
                 'Never invent components. Only use component logical names that appear in the provided allow-list or are directly present in the diff. '
+                'Do not auto-correct or normalize logical names (including spelling). Preserve exact logical names from the evidence. '
                 'If no in-scope custom components exist, explicitly say so.'
               ),
               user_text,
@@ -239,7 +242,39 @@ jobs:
             allowed_set = set(allowed_components)
             return sorted(name for name in found if name not in allowed_set)
 
+          def replace_near_matches(text: str, unknown_names: list[str]) -> tuple[str, list[tuple[str, str]], list[str]]:
+            if not unknown_names or not allowed_components:
+              return text, [], unknown_names
+
+            replacements: list[tuple[str, str]] = []
+            unresolved: list[str] = []
+            updated = text
+
+            for unknown_name in unknown_names:
+              matches = difflib.get_close_matches(unknown_name, allowed_components, n=1, cutoff=0.90)
+              if not matches:
+                unresolved.append(unknown_name)
+                continue
+
+              target = matches[0]
+              # Replace whole-token occurrences only.
+              updated = re.sub(rf'\b{re.escape(unknown_name)}\b', target, updated)
+              replacements.append((unknown_name, target))
+
+            return updated, replacements, unresolved
+
           unknown = get_unknown_components(summary)
+
+          # Auto-repair near-spelling variants (for example, oderdetail -> orderdetail) to avoid false blocks.
+          if unknown:
+            summary, auto_replacements, unresolved_after_repair = replace_near_matches(summary, unknown)
+            unknown = unresolved_after_repair
+            if auto_replacements:
+              summary = (
+                summary.rstrip()
+                + '\n\nNOTE: Logical name normalization guard auto-corrected near matches to evidence-backed names: '
+                + ', '.join([f'{src} -> {dst}' for src, dst in auto_replacements])
+              )
 
           # Retry once with a strict correction prompt if hallucinated names are found.
           if unknown:
