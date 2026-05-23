@@ -84,6 +84,7 @@ jobs:
           else
             git diff --no-index -- /dev/null "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
           fi
+          git status --porcelain --untracked-files=all -- "src/solutions/${{ inputs.solution_name }}" > review/changes.status || true
           cp "src/solutions/Rule.md" review/rules.md
           {
             echo "Review the unpacked Power Platform solution changes."
@@ -153,6 +154,7 @@ jobs:
           instructions = Path('review/instructions.txt').read_text(encoding='utf-8')
           rules = Path('review/rules.md').read_text(encoding='utf-8')
           diff = Path('review/changes.diff').read_text(encoding='utf-8')
+          status = Path('review/changes.status').read_text(encoding='utf-8') if Path('review/changes.status').exists() else ''
 
           # Build a conservative allow-list of logical-name-like tokens seen in the diff.
           # The model must not invent names outside this list.
@@ -225,7 +227,19 @@ jobs:
 
           def generate_change_summary_from_diff(diff_text: str) -> str:
             file_pairs = re.findall(r'^diff --git a/(.+?) b/(.+)$', diff_text, flags=re.MULTILINE)
-            allowed_paths = sorted({b for _, b in file_pairs})
+            allowed_paths = {b for _, b in file_pairs}
+
+            # Fallback path extraction from git porcelain status for untracked/new files.
+            for line in status.splitlines():
+              if not line.strip():
+                continue
+              # Porcelain line format: XY<space><path>
+              # Example: "?? src/solutions/Blog_CI/Entities/tmy_order/Entity.xml"
+              m = re.match(r'^[ MARCUDT\?]{2}\s+(.+)$', line)
+              if m:
+                allowed_paths.add(m.group(1).strip())
+
+            allowed_paths = sorted(allowed_paths)
             allowed_paths_text = '\n'.join(f'- {p}' for p in allowed_paths) if allowed_paths else '- (none detected)'
 
             user_text = (
@@ -234,8 +248,10 @@ jobs:
               '1) Added\n2) Modified\n3) Deleted\n'
               'For each item, include: path and one short evidence sentence.\n'
               'Use ONLY file paths from ALLOWED FILE PATHS.\n'
+              'Use both DIFF and GIT STATUS as evidence.\n'
               'If a section is empty, write "- None".\n\n'
               + '--- ALLOWED FILE PATHS ---\n' + allowed_paths_text
+              + '\n\n--- GIT STATUS ---\n' + (status if status.strip() else '(none)')
               + '\n\n--- DIFF ---\n' + diff_text
             )
 
