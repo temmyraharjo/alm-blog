@@ -119,6 +119,20 @@ When reviewing an attribute that is of type **Lookup**, check that its logical n
 
 Before listing rule findings, include a mandatory detailed inventory section so reviewers can see exactly what changed.
 
+### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY
+
+Start the output with a concise human-readable summary in this style:
+
+```
+- Added table <table logical name> - <table display name>
+	| Attribute | Display Name | Description |
+	| <attribute logical name> | <attribute display name> | <short data type/definition description> |
+```
+
+Use `Added`, `Updated`, or `Deleted` based on diff evidence.
+If a changed table has no in-scope attribute changes, include the table line and write: `No in-scope attribute changes`.
+If no in-scope custom tables/attributes are found, write: `No in-scope custom table/attribute changes found.`
+
 ### Mandatory Section 1: CHANGE INVENTORY
 
 Use this format:
