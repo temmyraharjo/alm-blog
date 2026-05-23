@@ -1,0 +1,206 @@
+name: Export Power Platform Solution
+
+on:
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: "Blog CI solution is used for demonstration purposes in the Power Platform DevOps blog series. Change this input to export a different solution. The solution must already exist in the target environment."
+        required: true
+        type: string
+        default: "Blog_CI"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export ${{ inputs.solution_name }}
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Power Platform CLI tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: WhoAmI validation
+        uses: microsoft/powerplatform-actions/who-am-i@v1
+        with:
+          environment-url: ${{ secrets.PP_ENVIRONMENT_URL }}
+          app-id: ${{ secrets.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.PP_TENANT_ID }}
+
+      - name: Export solution
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ secrets.PP_ENVIRONMENT_URL }}
+          app-id: ${{ secrets.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.PP_TENANT_ID }}
+          solution-name: ${{ inputs.solution_name }}
+          solution-output-file: out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip
+          managed: false
+
+      - name: Unpack solution to src/solutions/${{ inputs.solution_name }}
+        shell: bash
+        run: |
+          mkdir -p "src/solutions/${{ inputs.solution_name }}"
+          pac solution unpack \
+            --zipfile "out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip" \
+            --folder "src/solutions/${{ inputs.solution_name }}" \
+            --packagetype Unmanaged
+
+      - name: Build review input bundle
+        shell: bash
+        run: |
+          mkdir -p review
+          if git ls-files --error-unmatch "src/solutions/${{ inputs.solution_name }}" >/dev/null 2>&1; then
+            git diff -- "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
+          else
+            git diff --no-index -- /dev/null "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
+          fi
+          cp "src/solutions/Rule.md" review/rules.md
+          {
+            echo "Review the unpacked Power Platform solution changes."
+            echo
+            echo "Target solution: ${{ inputs.solution_name }}"
+            echo
+            echo "You must read and apply the rules from rules.md."
+            echo "Only evaluate custom tables and custom attributes in scope as defined in the rules."
+            echo "Summarize the overall changes first."
+            echo "Then list findings using the exact output structure defined in rules.md."
+            echo "If there are no findings, say so explicitly."
+          } > review/instructions.txt
+
+      - name: Generate review summary
+        env:
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_BASE_URL: ${{ vars.AZURE_OPENAI_BASE_URL }}
+          AZURE_OPENAI_MODEL: ${{ vars.AZURE_OPENAI_MODEL }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib import request
+
+          def write_fallback(message: str) -> None:
+            Path('review/summary.md').write_text(message.strip() + '\n', encoding='utf-8')
+
+          api_key = os.environ.get('AZURE_OPENAI_API_KEY', '').strip()
+          base_url = os.environ.get('AZURE_OPENAI_BASE_URL', '').strip()
+          model = os.environ.get('AZURE_OPENAI_MODEL', '').strip()
+
+          if not api_key or not base_url or not model:
+            write_fallback('''
+          LLM review was skipped because Azure Foundry settings are incomplete.
+
+          Required configuration:
+          - secret: AZURE_OPENAI_API_KEY
+          - variable: AZURE_OPENAI_BASE_URL
+          - variable: AZURE_OPENAI_MODEL
+
+          Review inputs were still generated:
+          - review/rules.md
+          - review/changes.diff
+          - review/instructions.txt
+          ''')
+            raise SystemExit(0)
+
+          instructions = Path('review/instructions.txt').read_text(encoding='utf-8')
+          rules = Path('review/rules.md').read_text(encoding='utf-8')
+          diff = Path('review/changes.diff').read_text(encoding='utf-8')
+
+          normalized_base_url = base_url.rstrip('/')
+          if not normalized_base_url.endswith('/openai/v1'):
+            write_fallback('AZURE_OPENAI_BASE_URL must end with /openai/v1 or /openai/v1/.')
+            raise SystemExit(0)
+
+          payload = {
+            'model': model,
+            'input': [
+              {
+                'role': 'system',
+                'content': [
+                  {
+                    'type': 'input_text',
+                    'text': 'You are reviewing unpacked Microsoft Power Platform solution changes. Follow the provided rules exactly and produce a concise but complete review.'
+                  }
+                ]
+              },
+              {
+                'role': 'user',
+                'content': [
+                  {
+                    'type': 'input_text',
+                    'text': instructions + '\n\n--- RULES ---\n' + rules + '\n\n--- DIFF ---\n' + diff
+                  }
+                ]
+              }
+            ]
+          }
+
+          req = request.Request(
+            f'{normalized_base_url}/responses',
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+              'api-key': api_key,
+              'Content-Type': 'application/json'
+            },
+            method='POST'
+          )
+
+          try:
+            with request.urlopen(req) as response:
+              body = json.loads(response.read().decode('utf-8'))
+          except Exception as exc:
+            write_fallback(f'LLM review request failed: {exc}')
+            raise SystemExit(0)
+
+          text_parts = []
+          for item in body.get('output', []):
+            for content in item.get('content', []):
+              if content.get('type') == 'output_text':
+                text_parts.append(content.get('text', ''))
+
+          summary = '\n'.join(part for part in text_parts if part).strip()
+          if not summary:
+            summary = 'No LLM summary was returned.'
+
+          Path('review/summary.md').write_text(summary + '\n', encoding='utf-8')
+          PY
+
+      - name: Publish review summary
+        shell: bash
+        run: |
+          {
+            echo "## LLM Review Summary"
+            echo
+            cat review/summary.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exported zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev
+          path: out/*.zip
+          if-no-files-found: error
+
+      - name: Upload unpacked solution folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev-unpacked
+          path: src/solutions/${{ inputs.solution_name }}/**
+          if-no-files-found: error
+
+      - name: Upload review bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.solution_name }}-dev-review
+          path: review/**
+          if-no-files-found: error
