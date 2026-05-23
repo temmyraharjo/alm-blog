@@ -87,6 +87,7 @@ jobs:
           else
             git diff --no-index -- /dev/null "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
           fi
+          git status --porcelain --untracked-files=all -- "src/solutions/${{ inputs.solution_name }}" > review/changes.status || true
           cp "src/solutions/Rule.md" review/rules.md
           {
             echo "Review the unpacked Power Platform solution changes."
@@ -145,11 +146,12 @@ jobs:
           instructions = Path('review/instructions.txt').read_text(encoding='utf-8')
           rules = Path('review/rules.md').read_text(encoding='utf-8')
           diff = Path('review/changes.diff').read_text(encoding='utf-8')
+          status = Path('review/changes.status').read_text(encoding='utf-8') if Path('review/changes.status').exists() else ''
 
           # Build a conservative allow-list of logical-name-like tokens seen in the diff.
           # The model must not invent names outside this list.
           logical_name_pattern = re.compile(r'\b[a-z][a-z0-9]{1,15}_[a-z0-9_]{2,120}\b')
-          allowed_components = sorted(set(logical_name_pattern.findall(diff)))
+          allowed_components = sorted(set(logical_name_pattern.findall(diff + '\n' + status)))
           allowed_components_text = '\n'.join(f'- {name}' for name in allowed_components)
           if not allowed_components_text:
             allowed_components_text = '- (none detected)'
@@ -218,8 +220,9 @@ jobs:
           base_user_text = (
             instructions
             + '\n\n--- RULES ---\n' + rules
+            + '\n\n--- GIT STATUS ---\n' + (status if status.strip() else '(none)')
             + '\n\n--- ALLOWED COMPONENTS (FROM DIFF) ---\n' + allowed_components_text
-            + '\n\nUse only names from ALLOWED COMPONENTS (FROM DIFF). If no allowed custom components are present, state no in-scope changes.'
+            + '\n\nUse only names from ALLOWED COMPONENTS (FROM DIFF and GIT STATUS). If no allowed custom components are present, state no in-scope changes.'
             + '\n\n--- DIFF ---\n' + diff
           )
 
