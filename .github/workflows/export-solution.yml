@@ -50,10 +50,10 @@ jobs:
           solution-output-file: out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip
           managed: false
 
-      - name: Unpack solution to src/solutions/${{ inputs.solution_name }}
+      - name: Unpack solution to src/solutions
         shell: bash
         run: |
-          mkdir -p "src/solutions/${{ inputs.solution_name }}"
+          mkdir -p "src/solutions"
           pac_cmd="pac"
           if ! command -v pac >/dev/null 2>&1; then
             if [ -x "${POWERPLATFORMTOOLS_PACPATH:-}" ]; then
@@ -68,26 +68,22 @@ jobs:
 
           "$pac_cmd" solution unpack \
             --zipfile "out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip" \
-            --folder "src/solutions/${{ inputs.solution_name }}" \
+            --folder "src/solutions" \
             --packagetype Unmanaged
 
-      - name: Copy unmanaged zip into src/solutions/${{ inputs.solution_name }}
+      - name: Copy unmanaged zip into src/solutions
         shell: bash
         run: |
           cp \
             "out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip" \
-            "src/solutions/${{ inputs.solution_name }}/${{ inputs.solution_name }}_unmanaged.zip"
+            "src/solutions/${{ inputs.solution_name }}_unmanaged.zip"
 
       - name: Build review input bundle
         shell: bash
         run: |
           mkdir -p review
-          if git ls-files --error-unmatch "src/solutions/${{ inputs.solution_name }}" >/dev/null 2>&1; then
-            git diff -- "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
-          else
-            git diff --no-index -- /dev/null "src/solutions/${{ inputs.solution_name }}" > review/changes.diff || true
-          fi
-          git status --porcelain --untracked-files=all -- "src/solutions/${{ inputs.solution_name }}" > review/changes.status || true
+          git diff -- "src/solutions" > review/changes.diff || true
+          git status --porcelain --untracked-files=all -- "src/solutions" > review/changes.status || true
           cp "src/solutions/Rule.md" review/rules.md
           {
             echo "Review the unpacked Power Platform solution changes."
@@ -317,7 +313,7 @@ jobs:
         id: detect_changes
         shell: bash
         run: |
-          solution_path="src/solutions/${{ inputs.solution_name }}"
+          solution_path="src/solutions"
           status_output="$(git status --porcelain --untracked-files=all -- "$solution_path")"
 
           if [ -n "$status_output" ]; then
@@ -405,7 +401,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.solution_name }}-dev-unpacked
-          path: src/solutions/${{ inputs.solution_name }}
+          path: src/solutions
           if-no-files-found: error
 
       - name: Upload review bundle
@@ -435,7 +431,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.solution_name }}-dev-unpacked
-          path: src/solutions
+          path: .
 
       - name: Commit and push unmanaged zip + unpacked solution changes
         shell: bash
@@ -454,23 +450,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          solution_path="src/solutions/${{ inputs.solution_name }}"
-          add_path=""
-
-          if [ -d "$solution_path" ]; then
-            add_path="$solution_path"
-          elif [ -d "src/solutions/Entities" ] || [ -d "src/solutions/AppModules" ] || [ -d "src/solutions/Other" ]; then
-            echo "Solution root folder '$solution_path' was not present in downloaded artifact."
-            echo "Using 'src/solutions' as commit scope for this run."
-            add_path="src/solutions"
-          else
+          if [ ! -d "src/solutions" ]; then
             echo "Expected solution content not found under src/solutions."
             echo "Downloaded artifact layout:"
             find src -maxdepth 4 -type d 2>/dev/null || true
             exit 1
           fi
 
-          git add "$add_path"
+          git add "src/solutions"
 
           if git diff --cached --quiet; then
             echo "No solution changes detected to commit."

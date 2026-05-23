@@ -73,13 +73,13 @@ Use these rules to determine **component type** and **change action** in the hum
 
 ### Component type mapping by unpacked path (best effort)
 
-- `src/solutions/<solution>/Entities/<name>/Entity.xml` -> Table
-- `src/solutions/<solution>/Entities/<name>/...` -> Table-related metadata (forms/views/ribbon)
-- `src/solutions/<solution>/AppModules/<name>/AppModule.xml` -> App Module
-- `src/solutions/<solution>/AppModuleSiteMaps/<name>/AppModuleSiteMap.xml` -> App Module Sitemap
-- `src/solutions/<solution>/Other/Relationships*.xml` and `.../Other/Relationships/*.xml` -> Relationship
-- `src/solutions/<solution>/Workflows/*.xml` or workflow/process paths -> Power Automate Flow / Process
-- `src/solutions/<solution>/WebResources/**` -> Web Resource
+- `src/solutions/Entities/<name>/Entity.xml` or `src/solutions/<solution>/Entities/<name>/Entity.xml` -> Table
+- `src/solutions/Entities/<name>/...` or `src/solutions/<solution>/Entities/<name>/...` -> Table-related metadata (forms/views/ribbon)
+- `src/solutions/AppModules/<name>/AppModule.xml` or `src/solutions/<solution>/AppModules/<name>/AppModule.xml` -> App Module
+- `src/solutions/AppModuleSiteMaps/<name>/AppModuleSiteMap.xml` or `src/solutions/<solution>/AppModuleSiteMaps/<name>/AppModuleSiteMap.xml` -> App Module Sitemap
+- `src/solutions/Other/Relationships*.xml` and `src/solutions/Other/Relationships/*.xml` (or with `<solution>/Other/...`) -> Relationship
+- `src/solutions/Workflows/*.xml` (or with `<solution>/Workflows/...`) -> Power Automate Flow / Process
+- `src/solutions/WebResources/**` (or with `<solution>/WebResources/...`) -> Web Resource
 - everything else -> Other Component
 
 ### Table and attribute extraction rules
