@@ -167,7 +167,7 @@ jobs:
             write_fallback('AZURE_OPENAI_BASE_URL must end with /openai/v1 or /openai/v1/.')
             raise SystemExit(0)
 
-          def generate_summary(user_text: str) -> str:
+          def call_model(system_text: str, user_text: str) -> str:
             payload = {
               'model': model,
               'input': [
@@ -176,12 +176,7 @@ jobs:
                   'content': [
                     {
                       'type': 'input_text',
-                      'text': (
-                        'You are reviewing unpacked Microsoft Power Platform solution changes. '
-                        'Follow the provided rules exactly and produce a detailed, evidence-based review. '
-                        'Never invent components. Only use component logical names that appear in the provided allow-list or are directly present in the diff. '
-                        'If no in-scope custom components exist, explicitly say so.'
-                      )
+                      'text': system_text
                     }
                   ]
                 },
@@ -217,6 +212,38 @@ jobs:
                   text_parts.append(content.get('text', ''))
             return '\n'.join(part for part in text_parts if part).strip()
 
+          def generate_rule_review(user_text: str) -> str:
+            return call_model(
+              (
+                'You are reviewing unpacked Microsoft Power Platform solution changes. '
+                'Follow the provided rules exactly and produce a detailed, evidence-based review. '
+                'Never invent components. Only use component logical names that appear in the provided allow-list or are directly present in the diff. '
+                'If no in-scope custom components exist, explicitly say so.'
+              ),
+              user_text,
+            )
+
+          def generate_change_summary_from_diff(diff_text: str) -> str:
+            file_pairs = re.findall(r'^diff --git a/(.+?) b/(.+)$', diff_text, flags=re.MULTILINE)
+            allowed_paths = sorted({b for _, b in file_pairs})
+            allowed_paths_text = '\n'.join(f'- {p}' for p in allowed_paths) if allowed_paths else '- (none detected)'
+
+            user_text = (
+              'Summarize what changed based only on the DIFF.\n'
+              'Output markdown with these sections in order:\n'
+              '1) Added\n2) Modified\n3) Deleted\n'
+              'For each item, include: path and one short evidence sentence.\n'
+              'Use ONLY file paths from ALLOWED FILE PATHS.\n'
+              'If a section is empty, write "- None".\n\n'
+              + '--- ALLOWED FILE PATHS ---\n' + allowed_paths_text
+              + '\n\n--- DIFF ---\n' + diff_text
+            )
+
+            return call_model(
+              'You are a strict diff summarizer. Do not invent files or components. Use only evidence from the provided diff.',
+              user_text,
+            )
+
           base_user_text = (
             instructions
             + '\n\n--- RULES ---\n' + rules
@@ -226,7 +253,7 @@ jobs:
           )
 
           try:
-            summary = generate_summary(base_user_text)
+            summary = generate_rule_review(base_user_text)
           except Exception as exc:
             write_fallback(f'LLM review request failed: {exc}')
             raise SystemExit(0)
@@ -249,7 +276,7 @@ jobs:
               + '. Regenerate the full answer using only allowed components. Do not include any other logical names.'
             )
             try:
-              summary = generate_summary(correction_text)
+              summary = generate_rule_review(correction_text)
             except Exception:
               pass
             unknown = get_unknown_components(summary)
@@ -265,6 +292,15 @@ jobs:
           if not summary:
             summary = 'No LLM summary was returned.'
 
+          try:
+            change_summary = generate_change_summary_from_diff(diff)
+          except Exception as exc:
+            change_summary = f'LLM change summary failed: {exc}'
+
+          if not change_summary.strip():
+            change_summary = 'No LLM change summary was returned.'
+
+          Path('review/change-summary.md').write_text(change_summary.strip() + '\n', encoding='utf-8')
           Path('review/summary.md').write_text(summary + '\n', encoding='utf-8')
           PY
 
@@ -272,7 +308,11 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## LLM Review Summary"
+            echo "## LLM Change Summary (From Diff)"
+            echo
+            cat review/change-summary.md
+            echo
+            echo "## LLM Rule Review Summary"
             echo
             cat review/summary.md
           } >> "$GITHUB_STEP_SUMMARY"
@@ -281,17 +321,61 @@ jobs:
         id: detect_changes
         shell: bash
         run: |
-          if git status --porcelain -- "src/solutions/${{ inputs.solution_name }}" | grep -q .; then
+          solution_path="src/solutions/${{ inputs.solution_name }}"
+          status_output="$(git status --porcelain --untracked-files=all -- "$solution_path")"
+
+          if [ -n "$status_output" ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+            added_or_untracked="$(printf '%s\n' "$status_output" | grep -E '^A |^\?\? ' || true)"
+            modified="$(printf '%s\n' "$status_output" | grep -E '^ M|^M |^MM|^AM|^ T|^T ' || true)"
+            deleted="$(printf '%s\n' "$status_output" | grep -E '^ D|^D ' || true)"
+
+            added_count="$(printf '%s\n' "$added_or_untracked" | sed '/^$/d' | wc -l | tr -d ' ')"
+            modified_count="$(printf '%s\n' "$modified" | sed '/^$/d' | wc -l | tr -d ' ')"
+            deleted_count="$(printf '%s\n' "$deleted" | sed '/^$/d' | wc -l | tr -d ' ')"
+
             {
               echo "## Git Change Detection (Commit/Push Decision Only)"
               echo
               echo "This section is from git status and is not the rules-based table/attribute review summary."
               echo
-              echo "Changes were detected under src/solutions/${{ inputs.solution_name }}."
+              echo "Changes were detected under $solution_path."
+              echo
+              echo "### Change Counts"
+              echo
+              echo "- Added or untracked: $added_count"
+              echo "- Modified: $modified_count"
+              echo "- Deleted: $deleted_count"
+              echo
+              if [ -n "$added_or_untracked" ]; then
+                echo "### Added or Untracked Files"
+                echo
+                echo '```'
+                printf '%s\n' "$added_or_untracked"
+                echo '```'
+                echo
+              fi
+              if [ -n "$modified" ]; then
+                echo "### Modified Files"
+                echo
+                echo '```'
+                printf '%s\n' "$modified"
+                echo '```'
+                echo
+              fi
+              if [ -n "$deleted" ]; then
+                echo "### Deleted Files"
+                echo
+                echo '```'
+                printf '%s\n' "$deleted"
+                echo '```'
+                echo
+              fi
+              echo "### Raw Git Status"
               echo
               echo '```'
-              git status --porcelain -- "src/solutions/${{ inputs.solution_name }}"
+              printf '%s\n' "$status_output"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
@@ -301,7 +385,7 @@ jobs:
               echo
               echo "This section is from git status and is not the rules-based table/attribute review summary."
               echo
-              echo "No changes were detected under src/solutions/${{ inputs.solution_name }}."
+              echo "No changes were detected under $solution_path."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
