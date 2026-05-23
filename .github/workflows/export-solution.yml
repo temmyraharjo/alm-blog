@@ -8,9 +8,14 @@ on:
         required: true
         type: string
         default: "Blog_CI"
+      approved_for_push:
+        description: "Approval gate: set to true to commit and push unpacked solution changes to the current branch."
+        required: true
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -66,6 +71,13 @@ jobs:
             --folder "src/solutions/${{ inputs.solution_name }}" \
             --packagetype Unmanaged
 
+      - name: Copy unmanaged zip into src/solutions/${{ inputs.solution_name }}
+        shell: bash
+        run: |
+          cp \
+            "out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip" \
+            "src/solutions/${{ inputs.solution_name }}/${{ inputs.solution_name }}_unmanaged.zip"
+
       - name: Build review input bundle
         shell: bash
         run: |
@@ -83,9 +95,14 @@ jobs:
             echo
             echo "You must read and apply the rules from rules.md."
             echo "Only evaluate custom tables and custom attributes in scope as defined in the rules."
-            echo "Summarize the overall changes first."
+            echo "Start with a detailed CHANGE INVENTORY section (not generic summary)."
+            echo "For each in-scope custom table, show: table logical name, action (Created/Modified/Deleted), and evidence from the diff."
+            echo "Under each table, list all in-scope custom attributes touched by the diff and show: attribute logical name, action (Created/Modified/Deleted), type (Lookup/Other), and lookup target if lookup."
+            echo "After the inventory, add a RULE EVALUATION section that maps each listed component to the full rule names from rules.md (no RULE-xxx IDs) with PASS/ERROR/WARNING as applicable."
             echo "Then list findings using the exact output structure defined in rules.md."
+            echo "If a rule does not apply to a component, explicitly mark it as N/A."
             echo "If there are no findings, say so explicitly."
+            echo "If there are no in-scope custom tables/attributes in the diff, state that explicitly in CHANGE INVENTORY."
           } > review/instructions.txt
 
       - name: Set up Python
@@ -146,7 +163,7 @@ jobs:
                 'content': [
                   {
                     'type': 'input_text',
-                    'text': 'You are reviewing unpacked Microsoft Power Platform solution changes. Follow the provided rules exactly and produce a concise but complete review.'
+                    'text': 'You are reviewing unpacked Microsoft Power Platform solution changes. Follow the provided rules exactly and produce a detailed, evidence-based review. Never return a generic summary when specific components are present in the diff.'
                   }
                 ]
               },
@@ -200,6 +217,40 @@ jobs:
             echo
             cat review/summary.md
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit and push unmanaged zip + unpacked solution changes (approval required)
+        if: ${{ inputs.approved_for_push }}
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" != "branch" ]; then
+            echo "This workflow can only push when triggered from a branch ref."
+            exit 1
+          fi
+
+          branch="${GITHUB_REF_NAME}"
+          if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+            echo "Refusing to auto-push to '$branch'. Run this workflow from a feature branch."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "src/solutions/${{ inputs.solution_name }}"
+
+          if git diff --cached --quiet; then
+            echo "No solution changes detected to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(${{ inputs.solution_name }}): export unmanaged zip and unpacked solution (run ${{ github.run_number }})"
+          git push origin "HEAD:${branch}"
+
+      - name: Push skipped (approval not granted)
+        if: ${{ !inputs.approved_for_push }}
+        shell: bash
+        run: |
+          echo "approved_for_push=false, so no commit/push was performed." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload exported zip
         uses: actions/upload-artifact@v4

@@ -23,7 +23,7 @@ This document defines naming conventions for **custom tables and attributes** in
 
 ---
 
-### RULE-001 — Logical names must be in lowercase
+### Logical names must be in lowercase
 
 **Applies to:** Table logical names, attribute logical names
 
@@ -44,11 +44,11 @@ Dataverse stores logical names in lowercase. Inconsistent casing in schema names
 | `TMY_order`        | ❌ FAIL | Prefix contains uppercase letters   |
 
 **LLM Check Instruction:**  
-Scan the logical name character by character. If any character falls outside `[a-z0-9_]`, flag as **RULE-001 VIOLATION**.
+Scan the logical name character by character. If any character falls outside `[a-z0-9_]`, flag a violation of **Logical names must be in lowercase**.
 
 ---
 
-### RULE-002 — Table logical names must use singular form
+### Table logical names must use singular form
 
 **Applies to:** Table logical names only (not attributes)
 
@@ -72,7 +72,7 @@ Each table record represents one instance of the entity. Plural naming implies a
 **Common plural suffixes to flag:** `-s`, `-es`, `-ies` (converted from `-y`), `-ves`
 
 **LLM Check Instruction:**  
-Extract the entity portion of the name (everything after the first `_`). Check whether it ends with a common plural suffix (`s`, `es`, `ies`, `ves`). If yes, flag as a **probable RULE-002 VIOLATION** and suggest the singular form. Note: some words are legitimately non-plural despite ending in `s` (e.g., `status`, `address`, `process`) — use context and common English to distinguish.
+Extract the entity portion of the name (everything after the first `_`). Check whether it ends with a common plural suffix (`s`, `es`, `ies`, `ves`). If yes, flag as a probable violation of **Table logical names must use singular form** and suggest the singular form. Note: some words are legitimately non-plural despite ending in `s` (e.g., `status`, `address`, `process`) — use context and common English to distinguish.
 
 **Known non-violations (words ending in `s` that are singular):**
 
@@ -80,7 +80,7 @@ Extract the entity portion of the name (everything after the first `_`). Check w
 
 ---
 
-### RULE-003 — Lookup attribute logical names must end with the suffix `id`
+### Lookup attribute logical names must end with the suffix `id`
 
 **Applies to:** Custom lookup (Many-to-One relationship) attributes only
 
@@ -102,7 +102,7 @@ Dataverse appends `id` to lookup logical names automatically when the schema nam
 | `tmy_ref_contact`     | ❌ FAIL | Lookup field not ending with `id`                       |
 
 **LLM Check Instruction:**  
-When reviewing an attribute that is of type **Lookup**, check that its logical name ends in `id`. If it does not, flag as **RULE-003 VIOLATION**. This rule applies **only to lookup-type attributes** — do not apply to text, number, date, or other attribute types.
+When reviewing an attribute that is of type **Lookup**, check that its logical name ends in `id`. If it does not, flag a violation of **Lookup attribute logical names must end with the suffix `id`**. This rule applies **only to lookup-type attributes** — do not apply to text, number, date, or other attribute types.
 
 ---
 
@@ -110,19 +110,63 @@ When reviewing an attribute that is of type **Lookup**, check that its logical n
 
 | Severity | Description                                                                 |
 |----------|-----------------------------------------------------------------------------|
-| ERROR    | Must be fixed before deployment. Applies to RULE-001, RULE-002, RULE-003.  |
-| WARNING  | Should be reviewed. Used for ambiguous plural detection (RULE-002 edge cases). |
+| ERROR    | Must be fixed before deployment. Applies to all enforced naming rules in this document. |
+| WARNING  | Should be reviewed. Used for ambiguous plural detection edge cases. |
 
 ---
 
 ## LLM Review Output Format
+
+Before listing rule findings, include a mandatory detailed inventory section so reviewers can see exactly what changed.
+
+### Mandatory Section 1: CHANGE INVENTORY
+
+Use this format:
+
+```
+## CHANGE INVENTORY
+
+TABLE: <table logical name>
+TABLE ACTION: <Created | Modified | Deleted>
+EVIDENCE: <short diff-based evidence>
+
+ATTRIBUTES:
+- <attribute logical name> | ACTION: <Created | Modified | Deleted> | TYPE: <Lookup | Other> | LOOKUP TARGET: <target table or N/A>
+- <attribute logical name> | ACTION: <Created | Modified | Deleted> | TYPE: <Lookup | Other> | LOOKUP TARGET: <target table or N/A>
+```
+
+If no in-scope custom tables or custom attributes are found, output:
+
+```
+## CHANGE INVENTORY
+No in-scope custom tables or custom attributes were found in the diff.
+```
+
+### Mandatory Section 2: RULE EVALUATION MATRIX
+
+For every component listed in CHANGE INVENTORY (table and attribute), include rule evaluation:
+
+```
+## RULE EVALUATION MATRIX
+COMPONENT: <logical name>
+TYPE: <Table | Attribute — Lookup | Attribute — Other>
+Logical names must be in lowercase: <PASS | ERROR>
+Table logical names must use singular form: <PASS | ERROR | WARNING | N/A>
+Lookup attribute logical names must end with the suffix `id`: <PASS | ERROR | N/A>
+REASON: <short explanation>
+SUGGESTED FIX: <logical name or N/A>
+```
+
+Use `N/A` when a rule does not apply (for example, singular-form rule on attributes, lookup-suffix rule on non-lookup attributes and tables).
+
+### Mandatory Section 3: FINDINGS
 
 When reviewing a set of changes, output findings in the following structure:
 
 ```
 COMPONENT: <logical name>
 TYPE: <Table | Attribute — Lookup | Attribute — Other>
-RULE VIOLATED: <RULE-001 | RULE-002 | RULE-003 | NONE>
+RULE VIOLATED: <Logical names must be in lowercase | Table logical names must use singular form | Lookup attribute logical names must end with the suffix `id` | NONE>
 SEVERITY: <ERROR | WARNING | PASS>
 REASON: <one-line explanation>
 SUGGESTED FIX: <corrected logical name, if applicable>
@@ -133,7 +177,7 @@ SUGGESTED FIX: <corrected logical name, if applicable>
 ```
 COMPONENT: tmy_Orders
 TYPE: Table
-RULE VIOLATED: RULE-001, RULE-002
+RULE VIOLATED: Logical names must be in lowercase; Table logical names must use singular form
 SEVERITY: ERROR
 REASON: Contains uppercase letter 'O'; entity name is plural.
 SUGGESTED FIX: tmy_order
@@ -146,7 +190,7 @@ REASON: Lowercase, lookup field correctly ends with 'id'.
 
 COMPONENT: tmy_contact_ref
 TYPE: Attribute — Lookup
-RULE VIOLATED: RULE-003
+RULE VIOLATED: Lookup attribute logical names must end with the suffix `id`
 SEVERITY: ERROR
 REASON: Lookup attribute does not end with 'id'.
 SUGGESTED FIX: tmy_contactid
