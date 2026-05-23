@@ -49,7 +49,19 @@ jobs:
         shell: bash
         run: |
           mkdir -p "src/solutions/${{ inputs.solution_name }}"
-          pac solution unpack \
+          pac_cmd="pac"
+          if ! command -v pac >/dev/null 2>&1; then
+            if [ -x "${POWERPLATFORMTOOLS_PACPATH:-}" ]; then
+              pac_cmd="${POWERPLATFORMTOOLS_PACPATH}"
+            elif [ -x "${POWERPLATFORMTOOLS_PACPATH:-}/pac" ]; then
+              pac_cmd="${POWERPLATFORMTOOLS_PACPATH}/pac"
+            else
+              echo "PAC CLI not found. POWERPLATFORMTOOLS_PACPATH='${POWERPLATFORMTOOLS_PACPATH:-}'"
+              exit 1
+            fi
+          fi
+
+          "$pac_cmd" solution unpack \
             --zipfile "out/${{ inputs.solution_name }}_dev_${{ github.run_number }}_unmanaged.zip" \
             --folder "src/solutions/${{ inputs.solution_name }}" \
             --packagetype Unmanaged
@@ -75,6 +87,11 @@ jobs:
             echo "Then list findings using the exact output structure defined in rules.md."
             echo "If there are no findings, say so explicitly."
           } > review/instructions.txt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Generate review summary
         env:
