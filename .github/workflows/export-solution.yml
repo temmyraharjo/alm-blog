@@ -128,6 +128,7 @@ jobs:
           import json
           import os
           import re
+          import xml.etree.ElementTree as ET
           from pathlib import Path
           from urllib import request
 
@@ -228,40 +229,138 @@ jobs:
               user_text,
             )
 
-          def generate_change_summary_from_diff(diff_text: str) -> str:
-            file_pairs = re.findall(r'^diff --git a/(.+?) b/(.+)$', diff_text, flags=re.MULTILINE)
-            allowed_paths = {b for _, b in file_pairs}
+          def local_name(tag: str) -> str:
+            return tag.split('}', 1)[-1].lower() if tag else ''
 
-            # Fallback path extraction from git porcelain status for untracked/new files.
-            for line in status.splitlines():
-              if not line.strip():
+          def first_text(node: ET.Element, names: set[str]) -> str:
+            for item in node.iter():
+              if local_name(item.tag) in names:
+                value = (item.text or '').strip()
+                if value:
+                  return value
+            return ''
+
+          def pretty_name(logical_name: str) -> str:
+            short = logical_name.split('_', 1)[1] if '_' in logical_name else logical_name
+            return short.replace('_', ' ').strip().title()
+
+          def parse_status_paths(status_text: str) -> dict[str, list[str]]:
+            buckets = {'added': [], 'modified': [], 'deleted': []}
+            for line in status_text.splitlines():
+              if not line.strip() or len(line) < 4:
                 continue
-              # Porcelain line format: XY<space><path>
-              # Example: "?? src/solutions/Blog_CI/Entities/tmy_order/Entity.xml"
-              m = re.match(r'^[ MARCUDT\?]{2}\s+(.+)$', line)
-              if m:
-                allowed_paths.add(m.group(1).strip())
+              code = line[:2]
+              path = line[3:].strip()
+              if not path:
+                continue
+              if code == '??' or code.startswith('A'):
+                buckets['added'].append(path)
+              elif 'D' in code:
+                buckets['deleted'].append(path)
+              else:
+                buckets['modified'].append(path)
+            return buckets
 
-            allowed_paths = sorted(allowed_paths)
-            allowed_paths_text = '\n'.join(f'- {p}' for p in allowed_paths) if allowed_paths else '- (none detected)'
+          def parse_entity_xml(entity_xml_path: Path, table_logical: str) -> tuple[str, list[tuple[str, str, str]]]:
+            table_display = pretty_name(table_logical)
+            attributes: list[tuple[str, str, str]] = []
 
-            user_text = (
-              'Summarize what changed based only on the DIFF.\n'
-              'Output markdown with these sections in order:\n'
-              '1) Added\n2) Modified\n3) Deleted\n'
-              'For each item, include: path and one short evidence sentence.\n'
-              'Use ONLY file paths from ALLOWED FILE PATHS.\n'
-              'Use both DIFF and GIT STATUS as evidence.\n'
-              'If a section is empty, write "- None".\n\n'
-              + '--- ALLOWED FILE PATHS ---\n' + allowed_paths_text
-              + '\n\n--- GIT STATUS ---\n' + (status if status.strip() else '(none)')
-              + '\n\n--- DIFF ---\n' + diff_text
-            )
+            try:
+              root = ET.fromstring(entity_xml_path.read_text(encoding='utf-8', errors='ignore'))
+            except Exception:
+              return table_display, attributes
 
-            return call_model(
-              'You are a strict diff summarizer. Do not invent files or components. Use only evidence from the provided diff.',
-              user_text,
-            )
+            display_from_xml = first_text(root, {'displayname'})
+            if display_from_xml:
+              table_display = display_from_xml
+
+            prefix = table_logical.split('_', 1)[0] + '_' if '_' in table_logical else ''
+            seen: set[str] = set()
+
+            for node in root.iter():
+              if local_name(node.tag) != 'attribute':
+                continue
+              logical = first_text(node, {'logicalname', 'name'})
+              if not logical or logical in seen:
+                continue
+              seen.add(logical)
+
+              # Only report custom attributes for this publisher prefix.
+              if prefix and not logical.startswith(prefix):
+                continue
+
+              attr_display = first_text(node, {'displayname'}) or logical
+              attr_type = first_text(node, {'attributetype', 'type'}) or 'Unknown'
+              attributes.append((logical, attr_display, attr_type))
+
+            attributes.sort(key=lambda item: item[0])
+            return table_display, attributes
+
+          def generate_human_change_summary_from_xml(status_text: str) -> str:
+            paths = parse_status_paths(status_text)
+            entity_file_pattern = re.compile(r'^src/solutions/[^/]+/Entities/([^/]+)/Entity\.xml$')
+
+            added_tables: list[str] = []
+            modified_tables: list[str] = []
+
+            for p in paths['added']:
+              if entity_file_pattern.match(p):
+                added_tables.append(p)
+
+            for p in paths['modified']:
+              if entity_file_pattern.match(p):
+                modified_tables.append(p)
+
+            lines: list[str] = []
+            lines.append('## XML-Based Change Summary')
+            lines.append('')
+
+            if not added_tables and not modified_tables:
+              lines.append('No custom table Entity.xml additions/modifications were detected in this run.')
+              return '\n'.join(lines)
+
+            def append_table_section(title: str, table_paths: list[str]) -> None:
+              lines.append(f'### {title}')
+              lines.append('')
+              if not table_paths:
+                lines.append('- None')
+                lines.append('')
+                return
+
+              for path_str in sorted(table_paths):
+                match = entity_file_pattern.match(path_str)
+                if not match:
+                  continue
+                table_logical = match.group(1)
+                table_display, attrs = parse_entity_xml(Path(path_str), table_logical)
+
+                if '_' not in table_logical:
+                  continue
+
+                lines.append(f'- {title[:-1]} table {table_display} ({table_logical})')
+                if attrs:
+                  lines.append('')
+                  lines.append('| Attribute | Display Name | Data Type |')
+                  lines.append('|---|---|---|')
+                  for logical, display, dtype in attrs:
+                    safe_display = display.replace('|', '\\|')
+                    safe_dtype = dtype.replace('|', '\\|')
+                    lines.append(f'| {logical} | {safe_display} | {safe_dtype} |')
+                else:
+                  lines.append('  - No custom attributes detected from Entity.xml.')
+                lines.append('')
+
+            append_table_section('Added Tables', added_tables)
+            append_table_section('Modified Tables', modified_tables)
+
+            if paths['deleted']:
+              lines.append('### Deleted Files')
+              lines.append('')
+              for p in sorted(paths['deleted']):
+                lines.append(f'- {p}')
+              lines.append('')
+
+            return '\n'.join(lines).strip()
 
           base_user_text = (
             instructions
@@ -312,9 +411,9 @@ jobs:
             summary = 'No LLM summary was returned.'
 
           try:
-            change_summary = generate_change_summary_from_diff(diff)
+            change_summary = generate_human_change_summary_from_xml(status)
           except Exception as exc:
-            change_summary = f'LLM change summary failed: {exc}'
+            change_summary = f'XML-based change summary failed: {exc}'
 
           if not change_summary.strip():
             change_summary = 'No LLM change summary was returned.'
