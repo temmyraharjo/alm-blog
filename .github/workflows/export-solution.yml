@@ -123,6 +123,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
           from urllib import request
 
@@ -153,59 +154,114 @@ jobs:
           rules = Path('review/rules.md').read_text(encoding='utf-8')
           diff = Path('review/changes.diff').read_text(encoding='utf-8')
 
+          # Build a conservative allow-list of logical-name-like tokens seen in the diff.
+          # The model must not invent names outside this list.
+          logical_name_pattern = re.compile(r'\b[a-z][a-z0-9]{1,15}_[a-z0-9_]{2,120}\b')
+          allowed_components = sorted(set(logical_name_pattern.findall(diff)))
+          allowed_components_text = '\n'.join(f'- {name}' for name in allowed_components)
+          if not allowed_components_text:
+            allowed_components_text = '- (none detected)'
+
           normalized_base_url = base_url.rstrip('/')
           if not normalized_base_url.endswith('/openai/v1'):
             write_fallback('AZURE_OPENAI_BASE_URL must end with /openai/v1 or /openai/v1/.')
             raise SystemExit(0)
 
-          payload = {
-            'model': model,
-            'input': [
-              {
-                'role': 'system',
-                'content': [
-                  {
-                    'type': 'input_text',
-                    'text': 'You are reviewing unpacked Microsoft Power Platform solution changes. Follow the provided rules exactly and produce a detailed, evidence-based review. Never return a generic summary when specific components are present in the diff.'
-                  }
-                ]
-              },
-              {
-                'role': 'user',
-                'content': [
-                  {
-                    'type': 'input_text',
-                    'text': instructions + '\n\n--- RULES ---\n' + rules + '\n\n--- DIFF ---\n' + diff
-                  }
-                ]
-              }
-            ]
-          }
+          def generate_summary(user_text: str) -> str:
+            payload = {
+              'model': model,
+              'input': [
+                {
+                  'role': 'system',
+                  'content': [
+                    {
+                      'type': 'input_text',
+                      'text': (
+                        'You are reviewing unpacked Microsoft Power Platform solution changes. '
+                        'Follow the provided rules exactly and produce a detailed, evidence-based review. '
+                        'Never invent components. Only use component logical names that appear in the provided allow-list or are directly present in the diff. '
+                        'If no in-scope custom components exist, explicitly say so.'
+                      )
+                    }
+                  ]
+                },
+                {
+                  'role': 'user',
+                  'content': [
+                    {
+                      'type': 'input_text',
+                      'text': user_text
+                    }
+                  ]
+                }
+              ]
+            }
 
-          req = request.Request(
-            f'{normalized_base_url}/responses',
-            data=json.dumps(payload).encode('utf-8'),
-            headers={
-              'api-key': api_key,
-              'Content-Type': 'application/json'
-            },
-            method='POST'
+            req = request.Request(
+              f'{normalized_base_url}/responses',
+              data=json.dumps(payload).encode('utf-8'),
+              headers={
+                'api-key': api_key,
+                'Content-Type': 'application/json'
+              },
+              method='POST'
+            )
+
+            with request.urlopen(req) as response:
+              body = json.loads(response.read().decode('utf-8'))
+
+            text_parts = []
+            for item in body.get('output', []):
+              for content in item.get('content', []):
+                if content.get('type') == 'output_text':
+                  text_parts.append(content.get('text', ''))
+            return '\n'.join(part for part in text_parts if part).strip()
+
+          base_user_text = (
+            instructions
+            + '\n\n--- RULES ---\n' + rules
+            + '\n\n--- ALLOWED COMPONENTS (FROM DIFF) ---\n' + allowed_components_text
+            + '\n\nUse only names from ALLOWED COMPONENTS (FROM DIFF). If no allowed custom components are present, state no in-scope changes.'
+            + '\n\n--- DIFF ---\n' + diff
           )
 
           try:
-            with request.urlopen(req) as response:
-              body = json.loads(response.read().decode('utf-8'))
+            summary = generate_summary(base_user_text)
           except Exception as exc:
             write_fallback(f'LLM review request failed: {exc}')
             raise SystemExit(0)
 
-          text_parts = []
-          for item in body.get('output', []):
-            for content in item.get('content', []):
-              if content.get('type') == 'output_text':
-                text_parts.append(content.get('text', ''))
+          def get_unknown_components(text: str) -> list[str]:
+            found = set(logical_name_pattern.findall(text))
+            if not found:
+              return []
+            allowed_set = set(allowed_components)
+            return sorted(name for name in found if name not in allowed_set)
 
-          summary = '\n'.join(part for part in text_parts if part).strip()
+          unknown = get_unknown_components(summary)
+
+          # Retry once with a strict correction prompt if hallucinated names are found.
+          if unknown:
+            correction_text = (
+              base_user_text
+              + '\n\nThe previous answer was invalid because it referenced components not found in the diff: '
+              + ', '.join(unknown)
+              + '. Regenerate the full answer using only allowed components. Do not include any other logical names.'
+            )
+            try:
+              summary = generate_summary(correction_text)
+            except Exception:
+              pass
+            unknown = get_unknown_components(summary)
+
+          if unknown:
+            summary = (
+              'LLM review was blocked because the generated output referenced components not present in the diff.\n\n'
+              + 'Unknown components: ' + ', '.join(unknown) + '\n\n'
+              + 'Allowed components detected from diff:\n' + allowed_components_text + '\n\n'
+              + 'No trusted rules summary was produced for this run. Please review the diff manually or rerun.'
+            )
+
           if not summary:
             summary = 'No LLM summary was returned.'
 
@@ -315,14 +371,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if [ ! -d "src/solutions/${{ inputs.solution_name }}" ]; then
-            echo "Expected folder not found: src/solutions/${{ inputs.solution_name }}"
-            echo "Downloaded artifact layout:" 
+          solution_path="src/solutions/${{ inputs.solution_name }}"
+          add_path=""
+
+          if [ -d "$solution_path" ]; then
+            add_path="$solution_path"
+          elif [ -d "src/solutions/Entities" ] || [ -d "src/solutions/AppModules" ] || [ -d "src/solutions/Other" ]; then
+            echo "Solution root folder '$solution_path' was not present in downloaded artifact."
+            echo "Using 'src/solutions' as commit scope for this run."
+            add_path="src/solutions"
+          else
+            echo "Expected solution content not found under src/solutions."
+            echo "Downloaded artifact layout:"
             find src -maxdepth 4 -type d 2>/dev/null || true
             exit 1
           fi
 
-          git add "src/solutions/${{ inputs.solution_name }}"
+          git add "$add_path"
 
           if git diff --cached --quiet; then
             echo "No solution changes detected to commit."
