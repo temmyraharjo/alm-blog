@@ -202,7 +202,11 @@ When reviewing an attribute that is of type **Lookup**, check that its physical 
 
 ## LLM Review Output Format
 
-### Mandatory Section 0: HUMAN-READABLE CHANGE SUMMARY (ALL COMPONENTS)
+Section title format is strict:
+
+- Use markdown headings for section titles (for example, `## RULE EVALUATION MATRIX`, `## FINDINGS (NAMING RULES)`).
+- Do not render section titles as numbered list items (for example, `1. RULE EVALUATION MATRIX`, `2. FINDINGS (NAMING RULES)`).
+- Do not prefix mandatory section titles with bullets, numbering, or other list markers.
 
 Start Section 0 with a compact summary table (no sentence-style intro lines).
 
@@ -231,11 +235,10 @@ Rules for this table:
 Use strict markdown table formatting for all tables in the output:
 
 - Use this exact header in Section 0:
-  - `| Action | Display Name | PhysicalName |`
-- Use this exact separator style (single spaces around cell content):
-  - `| --- | --- | --- |`
-- For each data row, output exactly 3 cells with this shape:
-  - `| <Action> | <Display Name> | <PhysicalName> |`
+  | Action | Display Name | PhysicalName |
+  |---|---|---|
+  | <Action> | <Display Name> | <PhysicalName> |
+- Use `Added`, `Modified`, or `Deleted` in `Action`.
 - Do not pad cells with alignment spaces for visual width.
 - Do not emit tabs in table rows.
 - Trim leading/trailing spaces inside each cell value.
@@ -279,6 +282,7 @@ After the compact summary table, continue with concise component-level lines in 
 ```
 - Added table <table physical name> - <table display name>
   | Attribute | Display Name | Data Type |
+  |---|---|---|
   | <attribute physical name> | <attribute display name> | <attribute data type> |
 
 - Added app module <component physical name>
