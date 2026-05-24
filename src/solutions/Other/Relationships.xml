@@ -13,6 +13,7 @@
   <EntityRelationship Name="tmy_account_tmy_order" />
   <EntityRelationship Name="tmy_contact_tmy_order" />
   <EntityRelationship Name="tmy_oderdetail_orderid_tmy_order" />
+  <EntityRelationship Name="TransactionCurrency_tmy_oderdetail" />
   <EntityRelationship Name="user_tmy_oderdetail" />
   <EntityRelationship Name="user_tmy_order" />
 </EntityRelationships>
