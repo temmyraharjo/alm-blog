@@ -226,6 +226,21 @@ Rules for this table:
 - If there are no component changes, output one row:
   - `| None | No component changes found | N/A |`
 
+### Markdown Table Formatting Requirements
+
+Use strict markdown table formatting for all tables in the output:
+
+- Use this exact header in Section 0:
+  - `| Action | Display Name | PhysicalName |`
+- Use this exact separator style (single spaces around cell content):
+  - `| --- | --- | --- |`
+- For each data row, output exactly 3 cells with this shape:
+  - `| <Action> | <Display Name> | <PhysicalName> |`
+- Do not pad cells with alignment spaces for visual width.
+- Do not emit tabs in table rows.
+- Trim leading/trailing spaces inside each cell value.
+- For relationship rows, do not use file names such as `Relationships.xml` as `Display Name` when a logical name is available from evidence.
+
 ### Large Change Set Summary Mode
 
 When the number of changed components is large, prefer compact summary output.

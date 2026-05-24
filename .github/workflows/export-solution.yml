@@ -145,8 +145,8 @@ jobs:
           status = Path('review/changes.status').read_text(encoding='utf-8') if Path('review/changes.status').exists() else ''
 
           # Build a conservative allow-list of logical-name-like tokens seen in the diff.
-          # The model must not invent names outside this list.
-          logical_name_pattern = re.compile(r'\b[a-z][a-z0-9]{1,15}_[a-z0-9_]{2,120}\b')
+          # Include mixed-case tokens so invalid names (for example, tmy_Price) can still be flagged.
+          logical_name_pattern = re.compile(r'\b[a-zA-Z][a-zA-Z0-9]{1,15}_[a-zA-Z0-9_]{2,120}\b')
           allowed_components = sorted(set(logical_name_pattern.findall(diff + '\n' + status)))
           allowed_components_text = '\n'.join(f'- {name}' for name in allowed_components)
           if not allowed_components_text:
@@ -291,6 +291,68 @@ jobs:
               + 'Allowed components detected from diff:\n' + allowed_components_text + '\n\n'
               + 'No trusted rules summary was produced for this run. Please review the diff manually or rerun.'
             )
+
+          def normalize_markdown_tables(text: str) -> str:
+            lines = text.splitlines()
+            output: list[str] = []
+            i = 0
+
+            def is_table_row(line: str) -> bool:
+              stripped = line.strip()
+              return stripped.startswith('|') and stripped.endswith('|') and stripped.count('|') >= 2
+
+            def parse_cells(line: str) -> list[str]:
+              stripped = line.strip()
+              return [cell.strip() for cell in stripped[1:-1].split('|')]
+
+            def is_separator_line(line: str) -> bool:
+              cells = parse_cells(line)
+              if not cells:
+                return False
+              for cell in cells:
+                compact = cell.replace(' ', '')
+                if not compact or any(ch not in '-:' for ch in compact):
+                  return False
+              return True
+
+            def fmt_row(cells: list[str]) -> str:
+              return '| ' + ' | '.join(cell.strip() for cell in cells) + ' |'
+
+            while i < len(lines):
+              if not is_table_row(lines[i]):
+                output.append(lines[i])
+                i += 1
+                continue
+
+              start = i
+              while i < len(lines) and is_table_row(lines[i]):
+                i += 1
+              block = lines[start:i]
+
+              if len(block) < 2 or not is_separator_line(block[1]):
+                output.extend(block)
+                continue
+
+              header_cells = parse_cells(block[0])
+              if not header_cells:
+                output.extend(block)
+                continue
+
+              col_count = len(header_cells)
+              output.append(fmt_row(header_cells))
+              output.append('| ' + ' | '.join(['---'] * col_count) + ' |')
+
+              for row_line in block[2:]:
+                row_cells = parse_cells(row_line)
+                if len(row_cells) < col_count:
+                  row_cells.extend([''] * (col_count - len(row_cells)))
+                elif len(row_cells) > col_count:
+                  row_cells = row_cells[:col_count]
+                output.append(fmt_row(row_cells))
+
+            return '\n'.join(output)
+
+          summary = normalize_markdown_tables(summary)
 
           if not summary:
             summary = 'No LLM summary was returned.'
