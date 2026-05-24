@@ -352,7 +352,100 @@ jobs:
 
             return '\n'.join(output)
 
+          def has_uppercase(value: str) -> bool:
+            return any(ch.isalpha() and ch.isupper() for ch in value)
+
+          def collect_case_violations(text: str) -> list[tuple[str, str, str, str]]:
+            # Returns tuples: (component, component_type, reason, suggested_fix)
+            violations: dict[tuple[str, str], tuple[str, str]] = {}
+
+            table_pattern = re.compile(
+              r'(?im)^\s*(?:Added|Updated|Modified|Deleted)\s+table\s+([A-Za-z][A-Za-z0-9]{1,15}_[A-Za-z0-9_]+)\b'
+            )
+            attr_row_pattern = re.compile(
+              r'(?im)^\s*\|\s*([A-Za-z][A-Za-z0-9]{1,15}_[A-Za-z0-9_]+)\s*\|'
+            )
+
+            for name in table_pattern.findall(text):
+              if has_uppercase(name):
+                violations[(name, 'Table')] = (
+                  'Contains uppercase letters; physical names must be lowercase [a-z0-9_].',
+                  name.lower(),
+                )
+
+            for name in attr_row_pattern.findall(text):
+              # Skip the Section 0 header token if it ever matches by accident.
+              if name.lower() in {'physicalname'}:
+                continue
+              if has_uppercase(name):
+                violations[(name, 'Attribute - Other')] = (
+                  'Contains uppercase letters; physical names must be lowercase [a-z0-9_].',
+                  name.lower(),
+                )
+
+            result: list[tuple[str, str, str, str]] = []
+            for (component, component_type), (reason, suggestion) in sorted(violations.items()):
+              result.append((component, component_type, reason, suggestion))
+            return result
+
+          def build_naming_sections(violations: list[tuple[str, str, str, str]]) -> tuple[str, str]:
+            if not violations:
+              matrix = '## RULE EVALUATION MATRIX\nNo naming-rule violations found.'
+              findings = '## FINDINGS (NAMING RULES)\nNo naming-rule violations found.'
+              return matrix, findings
+
+            matrix_lines = ['## RULE EVALUATION MATRIX']
+            findings_lines = ['## FINDINGS (NAMING RULES)']
+
+            for component, component_type, reason, suggestion in violations:
+              matrix_lines.extend([
+                f'COMPONENT: {component}',
+                f'TYPE: {component_type}',
+                'PhysicalName must be in lowercase: ERROR',
+                'Table physical names must use singular form: N/A' if component_type != 'Table' else 'Table physical names must use singular form: PASS',
+                'Lookup attribute physical names must end with the suffix `id`: N/A',
+                f'REASON: {reason}',
+                f'SUGGESTED FIX: {suggestion}',
+                '',
+              ])
+
+              findings_lines.extend([
+                f'COMPONENT: {component}',
+                f'TYPE: {component_type}',
+                'RULE VIOLATED: PhysicalName must be in lowercase',
+                'SEVERITY: ERROR',
+                f'REASON: {reason}',
+                f'SUGGESTED FIX: {suggestion}',
+                '',
+              ])
+
+            return '\n'.join(matrix_lines).rstrip(), '\n'.join(findings_lines).rstrip()
+
+          def replace_or_append_section(text: str, heading: str, replacement: str) -> str:
+            section_pattern = re.compile(
+              rf'(?is)(?:^|\n)\s*##?\s*{re.escape(heading)}\s*\n.*?(?=(?:\n\s*##?\s*[A-Z][^\n]*\n)|\Z)'
+            )
+            if section_pattern.search(text):
+              return section_pattern.sub('\n' + replacement + '\n', text).strip()
+            return (text.rstrip() + '\n\n' + replacement).strip()
+
+          def normalize_line_indentation(text: str) -> str:
+            normalized_lines: list[str] = []
+            for line in text.splitlines():
+              stripped = line.lstrip()
+              if stripped.startswith('|') or stripped.startswith('##') or stripped.startswith('COMPONENT:') or stripped.startswith('TYPE:') or stripped.startswith('RULE VIOLATED:') or stripped.startswith('SEVERITY:') or stripped.startswith('REASON:') or stripped.startswith('SUGGESTED FIX:'):
+                normalized_lines.append(stripped)
+              else:
+                normalized_lines.append(line)
+            return '\n'.join(normalized_lines)
+
           summary = normalize_markdown_tables(summary)
+          summary = normalize_line_indentation(summary)
+
+          deterministic_violations = collect_case_violations(summary)
+          matrix_section, findings_section = build_naming_sections(deterministic_violations)
+          summary = replace_or_append_section(summary, 'RULE EVALUATION MATRIX', matrix_section)
+          summary = replace_or_append_section(summary, 'FINDINGS (NAMING RULES)', findings_section)
 
           if not summary:
             summary = 'No LLM summary was returned.'
