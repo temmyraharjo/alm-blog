@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>0</isdefault>
+    <savedqueryid>{2c2b8f9e-a841-4af5-867c-99e5bd301523}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="tmy_ordernumber" select="1" icon="1" preview="1">
+        <row name="result" id="tmy_orderid">
+          <cell name="tmy_ordernumber" width="300" />
+          <cell name="createdon" width="125" />
+          <cell name="tmy_transactiondate" width="136" />
+          <cell name="tmy_customerid" width="100" />
+          <cell name="statecode" width="100" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="tmy_order">
+          <attribute name="tmy_orderid" />
+          <attribute name="tmy_ordernumber" />
+          <attribute name="createdon" />
+          <order attribute="tmy_ordernumber" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="1" />
+          </filter>
+          <attribute name="tmy_transactiondate" />
+          <attribute name="tmy_customerid" />
+          <attribute name="statecode" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Inactive Orders" languagecode="1033" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>
