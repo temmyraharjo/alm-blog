@@ -12,8 +12,6 @@
         <row name="result" id="tmy_orderid">
           <cell name="tmy_ordernumber" width="300" />
           <cell name="tmy_transactiondate" width="150" />
-          <cell name="tmy_customerid" width="100" />
-          <cell name="statecode" width="100" />
         </row>
       </grid>
     </layoutxml>
@@ -29,8 +27,6 @@
             <condition attribute="statecode" operator="eq" value="0" />
           </filter>
           <attribute name="tmy_transactiondate" />
-          <attribute name="tmy_customerid" />
-          <attribute name="statecode" />
         </entity>
       </fetch>
     </fetchxml>

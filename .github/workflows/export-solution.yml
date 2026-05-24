@@ -470,15 +470,22 @@ jobs:
               stripped = line.strip()
               return stripped.startswith('|') and stripped.endswith('|') and stripped.count('|') >= 2
 
+            in_table_block = False
             for line in lines:
-              if is_table_line(line):
-                if out and out[-1].strip() != '':
+              current_is_table = is_table_line(line)
+
+              if current_is_table:
+                # Add one blank line before the start of a table block.
+                if not in_table_block and out and out[-1].strip() != '':
                   out.append('')
                 out.append(line.strip())
+                in_table_block = True
               else:
-                if out and is_table_line(out[-1]) and line.strip() != '':
+                # Add one blank line after a table block when prose follows.
+                if in_table_block and line.strip() != '':
                   out.append('')
                 out.append(line)
+                in_table_block = False
 
             # Collapse 3+ blank lines to at most 2.
             collapsed: list[str] = []
