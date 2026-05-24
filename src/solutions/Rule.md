@@ -60,6 +60,20 @@ When evidence sources disagree, use this precedence:
 
 ---
 
+## Workflow Prompt Directives
+
+Apply these directives exactly when generating the review output:
+
+- For change summary, include all component types defined in this rules document.
+- Classify component type and action from changed file paths in `changes.status` first (per path mapping in this document); do not infer changed component types from name mentions in XML bodies.
+- Only report relationship component changes when corresponding changed paths map to relationship files (`Other/Relationships*.xml` or `Other/Relationships/*.xml`, including solution-prefixed variants).
+- If only table-related files changed under `Entities/<table>/...`, report those as table/table-metadata changes and do not emit relationship rows unless relationship-mapped files are changed.
+- For naming-rule evaluation, only evaluate components this rules document marks as in scope.
+- For naming rules output, print only WARNING/ERROR violations; suppress PASS component entries.
+- If no components or rule findings are in scope, explicitly output the required empty-state sentence(s) for the affected section.
+
+---
+
 ## Component Change Classification Rules
 
 Use these rules to determine **component type** and **change action** in the human summary.
