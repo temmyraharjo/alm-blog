@@ -454,7 +454,49 @@ jobs:
 
             return '\n'.join(normalized)
 
+          def normalize_component_list_lines(text: str) -> str:
+            # Convert list-marked component lines to plain lines so subsequent tables render.
+            return re.sub(
+              r'(?im)^\s*-\s+((?:Added|Updated|Modified|Deleted)\s+(?:table|app module|flow/process|relationship)\b.*)$',
+              r'\1',
+              text,
+            )
+
+          def enforce_table_block_spacing(text: str) -> str:
+            lines = text.splitlines()
+            out: list[str] = []
+
+            def is_table_line(line: str) -> bool:
+              stripped = line.strip()
+              return stripped.startswith('|') and stripped.endswith('|') and stripped.count('|') >= 2
+
+            for line in lines:
+              if is_table_line(line):
+                if out and out[-1].strip() != '':
+                  out.append('')
+                out.append(line.strip())
+              else:
+                if out and is_table_line(out[-1]) and line.strip() != '':
+                  out.append('')
+                out.append(line)
+
+            # Collapse 3+ blank lines to at most 2.
+            collapsed: list[str] = []
+            blank_run = 0
+            for line in out:
+              if line.strip() == '':
+                blank_run += 1
+                if blank_run <= 2:
+                  collapsed.append('')
+              else:
+                blank_run = 0
+                collapsed.append(line)
+
+            return '\n'.join(collapsed).strip()
+
           summary = normalize_markdown_tables(summary)
+          summary = normalize_component_list_lines(summary)
+          summary = enforce_table_block_spacing(summary)
           summary = normalize_relationship_display_names(summary)
           summary = normalize_line_indentation(summary)
 

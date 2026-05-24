@@ -244,6 +244,11 @@ Use strict markdown table formatting for all tables in the output:
 - Do not emit tabs in table rows.
 - Trim leading/trailing spaces inside each cell value.
 - For relationship rows, do not use file names such as `Relationships.xml` as `Display Name` when a logical name is available from evidence.
+- Ensure markdown tables are rendered as tables by layout:
+  - Add one blank line before every table header row.
+  - Add one blank line after every table block before prose text.
+  - Do not place table headers directly under list items.
+  - Do not prefix lines immediately before table headers with list markers (`-`, `*`, `1.`).
 
 ### Large Change Set Summary Mode
 
