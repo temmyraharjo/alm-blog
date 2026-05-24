@@ -431,7 +431,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.solution_name }}-dev-unpacked
-          path: .
+          path: _artifact
+
+      - name: Sync artifact content into src/solutions
+        shell: bash
+        run: |
+          source_dir="_artifact/src/solutions"
+          target_dir="src/solutions"
+
+          if [ ! -d "$source_dir" ]; then
+            echo "Expected artifact content not found under $source_dir."
+            echo "Downloaded artifact layout:"
+            find _artifact -maxdepth 5 -type d 2>/dev/null || true
+            exit 1
+          fi
+
+          rm -rf "$target_dir"
+          mkdir -p "src"
+          cp -a "$source_dir" "$target_dir"
 
       - name: Commit and push unmanaged zip + unpacked solution changes
         shell: bash
@@ -453,11 +470,11 @@ jobs:
           if [ ! -d "src/solutions" ]; then
             echo "Expected solution content not found under src/solutions."
             echo "Downloaded artifact layout:"
-            find src -maxdepth 4 -type d 2>/dev/null || true
+            find _artifact -maxdepth 5 -type d 2>/dev/null || true
             exit 1
           fi
 
-          git add "src/solutions"
+          git add -A "src/solutions"
 
           if git diff --cached --quiet; then
             echo "No solution changes detected to commit."
