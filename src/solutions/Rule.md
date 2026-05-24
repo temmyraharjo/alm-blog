@@ -227,6 +227,7 @@ Rules for this table:
 - Include all in-scope changed components (tables, apps, flows/processes, relationships, web resources, others) as separate rows.
 - If display name is unavailable, derive a readable display name from physical name/path.
 - If physical name is unavailable, use best-effort path-derived identifier.
+- For relationship components, format `Display Name` as `Relationship: <logical name>`.
 - If there are no component changes, output one row:
   - `| None | No component changes found | N/A |`
 
@@ -294,57 +295,34 @@ Use `Added`, `Updated`, or `Deleted` based on diff evidence.
 If a changed table has no in-scope attribute changes, include the table line and write: `No in-scope attribute changes`.
 If no component changes are found, write: `No component changes found.`
 
-### Mandatory Section 1: NAMING RULE EVALUATION MATRIX (CUSTOM TABLES/ATTRIBUTES ONLY)
+### Mandatory Naming Section: RULE EVALUATION (NAMING RULES)
 
-Include naming-rule evaluation only for components with potential or confirmed violations (WARNING/ERROR).
-Do not print PASS-only component entries.
+Use a single merged naming section only.
+Do not output separate sections named `RULE EVALUATION MATRIX` and `FINDINGS (NAMING RULES)`.
+Include only components with WARNING/ERROR violations. Do not print PASS-only entries.
 
 If no naming-rule violations exist, output only:
 
 ```
-## RULE EVALUATION MATRIX
+## RULE EVALUATION (NAMING RULES)
 No naming-rule violations found.
 ```
 
-For components with WARNING/ERROR, use:
+When violations exist, output each finding in this structure:
 
 ```
-## RULE EVALUATION MATRIX
+## RULE EVALUATION (NAMING RULES)
 COMPONENT: <physical name>
 TYPE: <Table | Attribute — Lookup | Attribute — Other>
-PhysicalName must be in lowercase: <PASS | ERROR>
-Table physical names must use singular form: <PASS | ERROR | WARNING | N/A>
-Lookup attribute physical names must end with the suffix `id`: <PASS | ERROR | N/A>
-REASON: <short explanation>
-SUGGESTED FIX: <physical name or N/A>
-```
-
-Use `N/A` when a rule does not apply (for example, singular-form rule on attributes, lookup-suffix rule on non-lookup attributes and tables).
-
-Do not apply naming-rule checks to non-table/non-attribute components (apps, flows, relationships, web resources, and other components).
-
-### Mandatory Section 2: FINDINGS (NAMING RULES)
-
-List findings only for WARNING/ERROR violations.
-Do not print PASS findings.
-
-If no violations exist, output only:
-
-```
-## FINDINGS (NAMING RULES)
-No naming-rule violations found.
-```
-
-When violations exist, output findings in the following structure:
-
-```
-COMPONENT: <physical name>
-TYPE: <Table | Attribute — Lookup | Attribute — Other>
-RULE VIOLATED: <PhysicalName must be in lowercase | Table physical names must use singular form | Lookup attribute physical names must end with the suffix `id` | NONE>
-SEVERITY: <ERROR | WARNING | PASS>
+RULE VIOLATED: <PhysicalName must be in lowercase | Table physical names must use singular form | Lookup attribute physical names must end with the suffix `id`>
+SEVERITY: <ERROR | WARNING>
 REASON: <one-line explanation>
 SUGGESTED FIX: <corrected logical name, if applicable>
 ```
+
+Use `N/A` only when explicitly needed inside the reason text.
+
+Do not apply naming-rule checks to non-table/non-attribute components (apps, flows, relationships, web resources, and other components).
 
 **Example output:**
 

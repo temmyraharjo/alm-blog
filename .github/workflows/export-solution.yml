@@ -388,28 +388,13 @@ jobs:
               result.append((component, component_type, reason, suggestion))
             return result
 
-          def build_naming_sections(violations: list[tuple[str, str, str, str]]) -> tuple[str, str]:
+          def build_naming_section(violations: list[tuple[str, str, str, str]]) -> str:
             if not violations:
-              matrix = '## RULE EVALUATION MATRIX\nNo naming-rule violations found.'
-              findings = '## FINDINGS (NAMING RULES)\nNo naming-rule violations found.'
-              return matrix, findings
+              return '## RULE EVALUATION (NAMING RULES)\nNo naming-rule violations found.'
 
-            matrix_lines = ['## RULE EVALUATION MATRIX']
-            findings_lines = ['## FINDINGS (NAMING RULES)']
-
+            lines = ['## RULE EVALUATION (NAMING RULES)']
             for component, component_type, reason, suggestion in violations:
-              matrix_lines.extend([
-                f'COMPONENT: {component}',
-                f'TYPE: {component_type}',
-                'PhysicalName must be in lowercase: ERROR',
-                'Table physical names must use singular form: N/A' if component_type != 'Table' else 'Table physical names must use singular form: PASS',
-                'Lookup attribute physical names must end with the suffix `id`: N/A',
-                f'REASON: {reason}',
-                f'SUGGESTED FIX: {suggestion}',
-                '',
-              ])
-
-              findings_lines.extend([
+              lines.extend([
                 f'COMPONENT: {component}',
                 f'TYPE: {component_type}',
                 'RULE VIOLATED: PhysicalName must be in lowercase',
@@ -419,7 +404,13 @@ jobs:
                 '',
               ])
 
-            return '\n'.join(matrix_lines).rstrip(), '\n'.join(findings_lines).rstrip()
+            return '\n'.join(lines).rstrip()
+
+          def remove_section(text: str, heading: str) -> str:
+            section_pattern = re.compile(
+              rf'(?is)(?:^|\n)\s*##?\s*{re.escape(heading)}\s*\n.*?(?=(?:\n\s*##?\s*[A-Z][^\n]*\n)|\Z)'
+            )
+            return section_pattern.sub('\n', text).strip()
 
           def replace_or_append_section(text: str, heading: str, replacement: str) -> str:
             section_pattern = re.compile(
@@ -439,13 +430,39 @@ jobs:
                 normalized_lines.append(line)
             return '\n'.join(normalized_lines)
 
+          def normalize_relationship_display_names(text: str) -> str:
+            relationship_pattern = re.compile(
+              r'(?im)^\s*(?:Added|Updated|Modified|Deleted)\s+relationship\s+([A-Za-z][A-Za-z0-9]{1,15}_[A-Za-z0-9_]+)\b'
+            )
+            relationships = set(relationship_pattern.findall(text))
+            if not relationships:
+              return text
+
+            lines = text.splitlines()
+            normalized: list[str] = []
+
+            for line in lines:
+              stripped = line.strip()
+              if stripped.startswith('|') and stripped.endswith('|') and stripped.count('|') >= 4:
+                cells = [cell.strip() for cell in stripped[1:-1].split('|')]
+                if len(cells) == 3:
+                  action, display_name, physical_name = cells
+                  if physical_name in relationships and display_name == physical_name:
+                    display_name = f'Relationship: {physical_name}'
+                    line = f'| {action} | {display_name} | {physical_name} |'
+              normalized.append(line)
+
+            return '\n'.join(normalized)
+
           summary = normalize_markdown_tables(summary)
+          summary = normalize_relationship_display_names(summary)
           summary = normalize_line_indentation(summary)
 
           deterministic_violations = collect_case_violations(summary)
-          matrix_section, findings_section = build_naming_sections(deterministic_violations)
-          summary = replace_or_append_section(summary, 'RULE EVALUATION MATRIX', matrix_section)
-          summary = replace_or_append_section(summary, 'FINDINGS (NAMING RULES)', findings_section)
+          naming_section = build_naming_section(deterministic_violations)
+          summary = remove_section(summary, 'RULE EVALUATION MATRIX')
+          summary = remove_section(summary, 'FINDINGS (NAMING RULES)')
+          summary = replace_or_append_section(summary, 'RULE EVALUATION (NAMING RULES)', naming_section)
 
           if not summary:
             summary = 'No LLM summary was returned.'
